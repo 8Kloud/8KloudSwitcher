@@ -11,7 +11,7 @@
 #   sudo scripts/ndi-netns-bench.sh up        # create namespace + veth
 #   scripts/ndi-netns-bench.sh sender 7680x4320   # run testgen in the ns (no sudo)
 #   # ...on the host: receiver with discovery pointed at the namespace:
-#   #   NDI_CONFIG_DIR=$(pwd)/scratch-ndi-host ./build/moo-headless ... --input MooNetBench
+#   #   NDI_CONFIG_DIR=$(pwd)/scratch-ndi-host ./build/kloud-headless ... --input KloudNetBench
 #   #   (the 'up' step writes that config: networks.ips = 10.99.77.2)
 #   sudo scripts/ndi-netns-bench.sh down      # tear down
 #
@@ -42,20 +42,20 @@ sender)
     SIZE=${2:-7680x4320}
     # sudo only for entering the namespace; testgen itself runs as you if
     # invoked via: sudo scripts/ndi-netns-bench.sh sender ...
-    exec ip netns exec $NS ./build/moo-testgen --name MooNetBench \
+    exec ip netns exec $NS ./build/kloud-testgen --name KloudNetBench \
         --size "$SIZE" --precompute 24
     ;;
 bench)
     # Start the fixed bench fleet inside the namespace (backgrounded, logs
     # in ./scratch-logs/): an 8K and a 1080p sender, plus a receiver that
-    # pulls the host's "MooSwitcher PGM" whenever it exists (the encode-side
+    # pulls the host's "8Kloud Switcher PGM" whenever it exists (the encode-side
     # probe). Network netns alone is NOT enough: the NDI SDK rendezvouses
     # same-machine peers through the filesystem (observed: a unix-socket
     # marker at /tmp/NTK_NDI_QUIC_SERVER_V5_<port>, plus /dev/shm) and then
     # moves pixels over that local channel regardless of IPs. The fleet
     # therefore gets private /tmp and /dev/shm (mount ns) and its own
     # hostname (UTS ns); logs go to the repo, which stays shared on purpose.
-    # Teardown from the host: pkill -x moo-testgen / moo-latmeter.
+    # Teardown from the host: pkill -x kloud-testgen / kloud-latmeter.
     NSCFG="$PWD/scratch-ndi-ns"
     LOGS="$PWD/scratch-logs"
     mkdir -p "$NSCFG" "$LOGS"
@@ -65,17 +65,17 @@ bench)
         > "$NSCFG/ndi-config.v1.json"
     chmod 644 "$NSCFG/ndi-config.v1.json"
     ip netns exec $NS unshare --uts --mount sh -c "
-        hostname moo-netbench
+        hostname kloud-netbench
         mount -t tmpfs -o size=2g tmpfs /dev/shm
         mount -t tmpfs -o size=1g tmpfs /tmp
         exec sudo -u '${SUDO_USER:-$USER}' sh -c \"
             cd '$PWD'
-            nohup ./build/moo-testgen --name MooNet8K --size 7680x4320 \
+            nohup ./build/kloud-testgen --name KloudNet8K --size 7680x4320 \
                 --precompute 24 --noise --quiet > '$LOGS/nb-tg8k.log' 2>&1 &
-            nohup ./build/moo-testgen --name MooNet1080 --noise --quiet \
+            nohup ./build/kloud-testgen --name KloudNet1080 --noise --quiet \
                 > '$LOGS/nb-tg1080.log' 2>&1 &
-            NDI_CONFIG_DIR='$NSCFG' nohup ./build/moo-latmeter \
-                --source 'MooSwitcher PGM' --find-timeout 3600 \
+            NDI_CONFIG_DIR='$NSCFG' nohup ./build/kloud-latmeter \
+                --source '8Kloud Switcher PGM' --find-timeout 3600 \
                 --duration 3600 --quiet --csv '$LOGS/nb-recv.csv' \
                 > '$LOGS/nb-recv.log' 2>&1 &
             echo 'bench fleet started (isolated /tmp, /dev/shm, hostname)'\""

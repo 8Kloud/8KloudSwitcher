@@ -1,13 +1,13 @@
-# MooSwitcher
+# 8Kloud Switcher
 
-Controls a [MooSwitcher](https://github.com/moocowsheep/MooSwitcher) live
+Controls a [8Kloud Switcher](https://github.com/moocowsheep/8KloudSwitcher) live
 video switcher over its TCP remote-control port.
 
 ## Setup
 
-1. Start the MooSwitcher GUI (remote control listens on port **9923** by
+1. Start the 8Kloud Switcher GUI (remote control listens on port **9923** by
    default; change with `--control-port N`, disable with `--control-port 0`).
-   For headless shows, start `moo-headless` with `--control-port 9923`.
+   For headless shows, start `kloud-headless` with `--control-port 9923`.
 2. Add this connection in Companion with the switcher's IP address and port.
 
 ## Available controls

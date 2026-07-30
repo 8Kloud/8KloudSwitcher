@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
 
-// moo-headless: runs the switcher engine without a GUI. Verification driver
+// kloud-headless: runs the switcher engine without a GUI. Verification driver
 // for M1: connects NDI inputs, renders the multiview, dumps PPM frames,
 // exercises cut via a scripted schedule, prints stats.
 
@@ -47,7 +47,7 @@ void onSignal(int) { g_stop = 1; }
 }  // namespace
 
 int main(int argc, char** argv) {
-    moo::EngineConfig cfg;
+    kloud::EngineConfig cfg;
     double duration = 10;
     std::string dumpDir;
     double dumpEvery = 2.0;
@@ -86,29 +86,29 @@ int main(int argc, char** argv) {
         auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
         if (a == "--input") {
             if (const char* v = next()) {
-                cfg.inputs.push_back({moo::InputSpec::Type::Ndi, v});
+                cfg.inputs.push_back({kloud::InputSpec::Type::Ndi, v});
                 lastMediaInput = -1;
             }
         } else if (a == "--srt-input") {
             if (const char* v = next()) {
-                cfg.inputs.push_back({moo::InputSpec::Type::Srt, v});
+                cfg.inputs.push_back({kloud::InputSpec::Type::Srt, v});
                 lastMediaInput = -1;
             }
         } else if (a == "--omt-input") {
             if (const char* v = next()) {
-                cfg.inputs.push_back({moo::InputSpec::Type::Omt, v});
+                cfg.inputs.push_back({kloud::InputSpec::Type::Omt, v});
                 lastMediaInput = -1;
             }
         } else if (a == "--media-input") {
             if (const char* v = next()) {
-                moo::InputSpec spec{moo::InputSpec::Type::Media, v};
+                kloud::InputSpec spec{kloud::InputSpec::Type::Media, v};
                 spec.mediaPlaylist.emplace_back(v);
                 cfg.inputs.push_back(std::move(spec));
                 lastMediaInput = int(cfg.inputs.size()) - 1;
             }
         } else if (a == "--still-input") {
             if (const char* v = next()) {
-                cfg.inputs.push_back({moo::InputSpec::Type::Still, v});
+                cfg.inputs.push_back({kloud::InputSpec::Type::Still, v});
                 lastMediaInput = -1;
             }
         } else if (a == "--media-item") {
@@ -191,10 +191,10 @@ int main(int argc, char** argv) {
             if (v) cfg.srtBitrateKbps = atoi(v);
         } else if (a == "--encoder") {
             const char* v = next();
-            if (!v || !moo::media::parseEncoderBackend(v, cfg.encoder)) return 2;
+            if (!v || !kloud::media::parseEncoderBackend(v, cfg.encoder)) return 2;
         } else if (a == "--encoder-preset") {
             const char* v = next();
-            if (!v || !moo::media::parseEncoderPreset(v, cfg.encoderPreset))
+            if (!v || !kloud::media::parseEncoderPreset(v, cfg.encoderPreset))
                 return 2;
         } else if (a == "--record") {
             if (const char* v = next()) recordPath = v;
@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
             replaces.push_back({s, idx, std::string(v + off)});
         } else if (a == "--framesync") {
             // IDX[:FRAMES] -- FRAMES 0 = measure-only, default 1. Applied
-            // after defaults so it also works with the implicit MooBench
+            // after defaults so it also works with the implicit KloudBench
             // inputs.
             const char* v = next();
             int idx = 0, fr = 1;
@@ -266,7 +266,7 @@ int main(int argc, char** argv) {
             cfg.validation = true;
         } else {
             fprintf(stderr,
-                    "usage: moo-headless --input NAME [--input NAME ...] "
+                    "usage: kloud-headless --input NAME [--input NAME ...] "
                     "[--srt-input URL] [--omt-input NAME_OR_URL] "
                     "[--still-input PATH] "
                     "[--media-input PATH [--media-trim IN_MS[:OUT_MS]] "
@@ -290,8 +290,8 @@ int main(int argc, char** argv) {
         }
     }
     if (cfg.inputs.empty())
-        cfg.inputs = {{moo::InputSpec::Type::Ndi, "MooBenchA"},
-                      {moo::InputSpec::Type::Ndi, "MooBenchB"}};
+        cfg.inputs = {{kloud::InputSpec::Type::Ndi, "KloudBenchA"},
+                      {kloud::InputSpec::Type::Ndi, "KloudBenchB"}};
     for (auto [idx, fr] : syncSpecs) {
         if (size_t(idx) >= cfg.inputs.size()) {
             fprintf(stderr, "--framesync %d: no such input\n", idx);
@@ -302,9 +302,9 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    moo::Engine engine;
+    kloud::Engine engine;
     if (!engine.start(cfg)) {
-        MOO_LOGE("engine start failed");
+        KLOUD_LOGE("engine start failed");
         return 1;
     }
     if (!recordPath.empty()) engine.requestRecording(recordPath);
@@ -315,18 +315,18 @@ int main(int argc, char** argv) {
             if (idx >= 0 && idx < aud->inputCount())
                 aud->channel(idx).delayMs.store(ms);
     for (auto [k, src] : dskArms)
-        engine.post({moo::Command::Type::SetDskSource, k, src, 0.f});
+        engine.post({kloud::Command::Type::SetDskSource, k, src, 0.f});
     for (auto [k, ticks] : dskFades)
-        engine.post({moo::Command::Type::SetDskFade, k, ticks, 0.f});
+        engine.post({kloud::Command::Type::SetDskFade, k, ticks, 0.f});
     for (int k : dskTies)
-        engine.post({moo::Command::Type::SetDskTie, k, 1, 0.f});
+        engine.post({kloud::Command::Type::SetDskTie, k, 1, 0.f});
     for (int k : dskAfvs)
-        engine.post({moo::Command::Type::SetDskAudioFollow, k, 1, 0.f});
-    std::unique_ptr<moo::ctl::ControlServer> control;
+        engine.post({kloud::Command::Type::SetDskAudioFollow, k, 1, 0.f});
+    std::unique_ptr<kloud::ctl::ControlServer> control;
     if (controlPort > 0)
-        control = std::make_unique<moo::ctl::ControlServer>(engine, controlPort);
+        control = std::make_unique<kloud::ctl::ControlServer>(engine, controlPort);
 
-    const int64_t t0 = moo::MediaClock::nowNs();
+    const int64_t t0 = kloud::MediaClock::nowNs();
     const int64_t endNs = t0 + int64_t(duration * 1e9);
     int64_t nextDumpNs = t0 + int64_t(dumpEvery * 1e9);
     int64_t nextCutNs = t0 + 2'000'000'000;
@@ -338,9 +338,9 @@ int main(int argc, char** argv) {
     uint64_t mvSeq = 0;
     int mvW = 0, mvH = 0;
 
-    while (!g_stop && moo::MediaClock::nowNs() < endNs) {
+    while (!g_stop && kloud::MediaClock::nowNs() < endNs) {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        const int64_t now = moo::MediaClock::nowNs();
+        const int64_t now = kloud::MediaClock::nowNs();
 
         if (!recordStopped && recordStopAfter >= 0 &&
             now >= t0 + int64_t(recordStopAfter * 1e9)) {
@@ -354,34 +354,34 @@ int main(int argc, char** argv) {
         }
 
         if (scriptedCuts && now >= nextCutNs) {
-            engine.post({moo::Command::Type::Cut, 0, 0, 0.f});
+            engine.post({kloud::Command::Type::Cut, 0, 0, 0.f});
             nextCutNs += 2'000'000'000;
         }
         for (auto& r : replaces) {
             if (!r.done && now >= t0 + int64_t(r.afterS * 1e9)) {
                 r.done = true;
                 const auto type =
-                    r.ref.rfind("srt://", 0) == 0 ? moo::InputSpec::Type::Srt
+                    r.ref.rfind("srt://", 0) == 0 ? kloud::InputSpec::Type::Srt
                     : r.ref.rfind("omt://", 0) == 0
-                        ? moo::InputSpec::Type::Omt
+                        ? kloud::InputSpec::Type::Omt
                     : std::filesystem::is_regular_file(r.ref)
-                        ? (moo::media::isStillImagePath(r.ref)
-                               ? moo::InputSpec::Type::Still
-                               : moo::InputSpec::Type::Media)
-                        : moo::InputSpec::Type::Ndi;
+                        ? (kloud::media::isStillImagePath(r.ref)
+                               ? kloud::InputSpec::Type::Still
+                               : kloud::InputSpec::Type::Media)
+                        : kloud::InputSpec::Type::Ndi;
                 engine.requestInputReplace(r.idx, {type, r.ref});
             }
         }
         for (auto& t : dskToggles) {
             if (!t.done && now >= t0 + int64_t(t.afterS * 1e9)) {
                 t.done = true;
-                engine.post({moo::Command::Type::DskToggle, t.k, 0, 0.f});
+                engine.post({kloud::Command::Type::DskToggle, t.k, 0, 0.f});
             }
         }
         if (scriptedAutos && now >= nextCutNs) {
             // Cycle transition types (mix + all wipes), 45-frame duration.
-            engine.post({moo::Command::Type::SetTransition, transCycle % 7, 45, 0.05f});
-            engine.post({moo::Command::Type::Auto, 0, 0, 0.f});
+            engine.post({kloud::Command::Type::SetTransition, transCycle % 7, 45, 0.05f});
+            engine.post({kloud::Command::Type::Auto, 0, 0, 0.f});
             ++transCycle;
             nextCutNs += 2'500'000'000;
         }
@@ -390,8 +390,8 @@ int main(int argc, char** argv) {
                 char path[512];
                 snprintf(path, sizeof path, "%s/mv_%03d.ppm", dumpDir.c_str(),
                          dumpIdx++);
-                moo::ppm::writeRgba(path, mvW, mvH, mv.data());
-                MOO_LOGI("dumped %s (seq %llu)", path, (unsigned long long)mvSeq);
+                kloud::ppm::writeRgba(path, mvW, mvH, mv.data());
+                KLOUD_LOGI("dumped %s (seq %llu)", path, (unsigned long long)mvSeq);
             }
             nextDumpNs += int64_t(dumpEvery * 1e9);
         }
@@ -436,7 +436,7 @@ int main(int argc, char** argv) {
                                            std::memory_order_relaxed));
                 line += "]";
             }
-            MOO_LOGI("%s", line.c_str());
+            KLOUD_LOGI("%s", line.c_str());
             nextLogNs += 1'000'000'000;
         }
     }
@@ -444,9 +444,9 @@ int main(int argc, char** argv) {
     control.reset();  // its poll thread reads engine state; stop it first
     engine.stop();
 
-    MOO_LOGI("-- final counters (nonzero) --");
-    for (const auto& s : moo::Stats::snapshot())
+    KLOUD_LOGI("-- final counters (nonzero) --");
+    for (const auto& s : kloud::Stats::snapshot())
         if (s.value)
-            MOO_LOGI("  %-28s %lld", s.name.c_str(), (long long)s.value);
+            KLOUD_LOGI("  %-28s %lld", s.name.c_str(), (long long)s.value);
     return 0;
 }

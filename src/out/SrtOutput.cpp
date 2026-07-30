@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -28,7 +28,7 @@
 #include "core/MediaClock.h"
 #include "core/Stats.h"
 
-namespace moo {
+namespace kloud {
 
 SrtOutput::SrtOutput(gpu::VkEngine& vk, media::CudaCtx& cuda,
                      gpu::Compositor& comp, gpu::Timeline& renderTL,
@@ -42,12 +42,12 @@ SrtOutput::SrtOutput(gpu::VkEngine& vk, media::CudaCtx& cuda,
     enc_ = media::openVideoEncoder(cuda_, show_, cfg_.encoder);
     if (!enc_) return;
     if (withAudio && !aac_.open(48000, 160'000))
-        MOO_LOGW("srt out: aac encoder unavailable; sending video-only");
+        KLOUD_LOGW("srt out: aac encoder unavailable; sending video-only");
 
     for (int f = 0; f < gpu::Compositor::kFramesInFlight; ++f) {
         const int fd = comp_.nvPackExportFd(f);
         if (fd < 0 || !cuda_.importVkFd(fd, comp_.nvPackBytes(), imports_[f])) {
-            MOO_LOGE("srt out: NV12 pack buffer import failed (fif %d)", f);
+            KLOUD_LOGE("srt out: NV12 pack buffer import failed (fif %d)", f);
             return;
         }
     }
@@ -55,7 +55,7 @@ SrtOutput::SrtOutput(gpu::VkEngine& vk, media::CudaCtx& cuda,
     ok_ = true;
     encodeThread_ = std::jthread([this](std::stop_token st) { encodeLoop(st); });
     muxThread_ = std::jthread([this](std::stop_token st) { muxLoop(st); });
-    MOO_LOGI("srt out: '%s' ready", cfg_.url.c_str());
+    KLOUD_LOGI("srt out: '%s' ready", cfg_.url.c_str());
 }
 
 SrtOutput::~SrtOutput() {
@@ -167,7 +167,7 @@ bool SrtOutput::openMux() {
         return false;
     if (avformat_write_header(oc_, nullptr) < 0) return false;
     connected_.store(true, std::memory_order_relaxed);
-    MOO_LOGI("srt out: connected (%s)", cfg_.url.c_str());
+    KLOUD_LOGI("srt out: connected (%s)", cfg_.url.c_str());
     return true;
 }
 
@@ -215,7 +215,7 @@ void SrtOutput::muxLoop(std::stop_token st) {
                     for (AVPacket* q = nullptr; audioPkts_.pop(q); ++flushed)
                         av_packet_free(&q);
                     Stats::counter("out.srt.connectFlushed").add(flushed);
-                    MOO_LOGI("srt out: connect-flushed %lld stale packets",
+                    KLOUD_LOGI("srt out: connect-flushed %lld stale packets",
                              (long long)flushed);
                     continue;
                 }
@@ -233,7 +233,7 @@ void SrtOutput::muxLoop(std::stop_token st) {
         const int r = av_interleaved_write_frame(oc_, pkt);
         av_packet_free(&pkt);
         if (r < 0) {
-            MOO_LOGW("srt out: write failed (%d); reconnecting", r);
+            KLOUD_LOGW("srt out: write failed (%d); reconnecting", r);
             closeMux(false);
             nextRetryNs = MediaClock::nowNs() + 1'000'000'000;
         } else {
@@ -244,4 +244,4 @@ void SrtOutput::muxLoop(std::stop_token st) {
     closeMux(true);
 }
 
-}  // namespace moo
+}  // namespace kloud

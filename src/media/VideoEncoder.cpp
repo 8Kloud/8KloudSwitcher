@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -24,7 +24,7 @@
 #include "media/IVideoEncoder.h"
 #include "media/NvencDirect.h"
 
-namespace moo::media {
+namespace kloud::media {
 
 const char* encoderBackendName(EncoderBackend backend) {
     switch (backend) {
@@ -88,11 +88,11 @@ std::unique_ptr<IVideoEncoder> openVideoEncoder(CudaCtx& cuda,
         auto enc = std::make_unique<FfmpegNvenc>();
         if (enc->open(cuda, show, cfg)) return enc;
         if (cfg.backend == EncoderBackend::Ffmpeg) return nullptr;
-        MOO_LOGW("encoder: hevc_nvenc unavailable; falling back to direct NVENC");
+        KLOUD_LOGW("encoder: hevc_nvenc unavailable; falling back to direct NVENC");
     }
     auto enc = std::make_unique<NvencDirect>();
     if (enc->open(cuda, show, cfg)) return enc;
     return nullptr;
 }
 
-}  // namespace moo::media
+}  // namespace kloud::media

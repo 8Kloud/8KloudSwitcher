@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -38,7 +38,7 @@ extern "C" {
 #include <libavutil/hwcontext_cuda.h>
 }
 
-namespace moo {
+namespace kloud {
 
 SrtInput::SrtInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue,
                    media::CudaCtx& cuda, std::string url, int index,
@@ -63,7 +63,7 @@ SrtInput::SrtInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue,
         if (av_hwdevice_ctx_init(hwDev_) < 0) av_buffer_unref(&hwDev_);
     }
     if (!hwDev_) {
-        MOO_LOGE("in%d(%s): CUDA hwdevice init failed", index_,
+        KLOUD_LOGE("in%d(%s): CUDA hwdevice init failed", index_,
                  mediaMode_ ? "media" : "srt");
         return;
     }
@@ -212,7 +212,7 @@ bool SrtInput::openStream() {
                 avcodec_free_context(&adec_);
         }
         if (!adec_) {
-            MOO_LOGW("in%d(%s): audio stream present but not decodable",
+            KLOUD_LOGW("in%d(%s): audio stream present but not decodable",
                      index_, mediaMode_ ? "media" : "srt");
             audIdx_ = -1;
         }
@@ -231,7 +231,7 @@ bool SrtInput::openStream() {
             const int64_t targetUs = originUs + mediaItem.inMs * 1000;
             if (avformat_seek_file(ic_, -1, INT64_MIN, targetUs, INT64_MAX,
                                    AVSEEK_FLAG_BACKWARD) < 0) {
-                MOO_LOGW("in%d(media): seek to trim-in %lld ms failed; "
+                KLOUD_LOGW("in%d(media): seek to trim-in %lld ms failed; "
                          "decoding forward",
                          index_, (long long)mediaItem.inMs);
             }
@@ -243,7 +243,7 @@ bool SrtInput::openStream() {
     if (mediaMode_) {
         const std::string outLabel =
             mediaItem.outMs > 0 ? std::to_string(mediaItem.outMs) : "end";
-        MOO_LOGI("in%d(media): opened item %d/%zu '%s', trim %lld..%s, "
+        KLOUD_LOGI("in%d(media): opened item %d/%zu '%s', trim %lld..%s, "
                  "speed %.2fx, %s %dx%d%s",
                  index_,
                  mediaIndex_.load(std::memory_order_relaxed) + 1,
@@ -253,7 +253,7 @@ bool SrtInput::openStream() {
                  codec->name, par->width, par->height,
                  adec_ ? " + audio" : "");
     } else {
-        MOO_LOGI("in%d(srt): opened, %s %dx%d%s", index_, codec->name,
+        KLOUD_LOGI("in%d(srt): opened, %s %dx%d%s", index_, codec->name,
                  par->width, par->height, adec_ ? " + audio" : "");
     }
     return true;
@@ -393,7 +393,7 @@ bool SrtInput::initAudioTempo(const AVFrame* f, int speedPermille) {
     avfilter_inout_free(&graphOutputs);
     if (err >= 0) err = avfilter_graph_config(afGraph_, nullptr);
     if (err < 0) {
-        MOO_LOGW("in%d(media): audio tempo graph init failed (%d)",
+        KLOUD_LOGW("in%d(media): audio tempo graph init failed (%d)",
                  index_, err);
         closeAudioTempo();
         return false;
@@ -450,7 +450,7 @@ void SrtInput::handleAudioFrame(AVFrame* f) {
         if (err >= 0) {
             drainAudioTempo();
         } else {
-            MOO_LOGW("in%d(media): audio tempo input failed (%d)",
+            KLOUD_LOGW("in%d(media): audio tempo input failed (%d)",
                      index_, err);
         }
         return;
@@ -466,7 +466,7 @@ void SrtInput::handleAudioFrame(AVFrame* f) {
                                 nullptr) < 0 ||
             swr_init(swr_) < 0) {
             if (swr_) swr_free(&swr_);
-            MOO_LOGW("in%d(%s): swr init failed for audio", index_,
+            KLOUD_LOGW("in%d(%s): swr init failed for audio", index_,
                      mediaMode_ ? "media" : "srt");
             return;
         }
@@ -524,7 +524,7 @@ void SrtInput::handleFrame(AVFrame* f) {
         for (int s = 0; s < slots; ++s) {
             const int fd = ring_->exportStagingFd(s);
             if (fd < 0 || !cuda_.importVkFd(fd, ring_->stagingBytes(), imports_[s])) {
-                MOO_LOGE("in%d(%s): staging import failed", index_,
+                KLOUD_LOGE("in%d(%s): staging import failed", index_,
                          mediaMode_ ? "media" : "srt");
                 ring_.reset();
                 return;
@@ -532,7 +532,7 @@ void SrtInput::handleFrame(AVFrame* f) {
         }
         std::lock_guard lk(descM_);
         desc_ = d;
-        MOO_LOGI("in%d(%s): format %dx%d @ %lld/%lld", index_,
+        KLOUD_LOGI("in%d(%s): format %dx%d @ %lld/%lld", index_,
                  mediaMode_ ? "media" : "srt", d.width, d.height,
                  (long long)d.fpsN, (long long)d.fpsD);
     }
@@ -691,7 +691,7 @@ void SrtInput::run(std::stop_token st) {
             if (mediaMode_) {
                 advanceMedia();
             } else {
-                MOO_LOGW("in%d(srt): read error/eof (%d); reconnecting",
+                KLOUD_LOGW("in%d(srt): read error/eof (%d); reconnecting",
                          index_, r);
                 closeStream();
             }
@@ -758,4 +758,4 @@ void SrtInput::run(std::stop_token st) {
     av_frame_free(&frame);
 }
 
-}  // namespace moo
+}  // namespace kloud

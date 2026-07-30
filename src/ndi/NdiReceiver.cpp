@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -31,7 +31,7 @@
 #include "core/MediaClock.h"
 #include "core/Stats.h"
 
-namespace moo {
+namespace kloud {
 
 namespace {
 std::string lower(std::string s) {
@@ -55,10 +55,10 @@ NdiReceiver::NdiReceiver(gpu::VkEngine& eng, gpu::Queue& uploadQueue,
     desc.color_format = NDIlib_recv_color_format_fastest;  // UYVY (UYVA w/ alpha)
     desc.bandwidth = NDIlib_recv_bandwidth_highest;
     desc.allow_video_fields = false;
-    desc.p_ndi_recv_name = "MooSwitcher input";
+    desc.p_ndi_recv_name = "8Kloud Switcher input";
     recv_ = NDIlib_recv_create_v3(&desc);
     if (!recv_) {
-        MOO_LOGE("in%d: NDIlib_recv_create_v3 failed", index_);
+        KLOUD_LOGE("in%d: NDIlib_recv_create_v3 failed", index_);
         return;
     }
     thread_ = std::jthread([this](std::stop_token st) { run(st); });
@@ -134,7 +134,7 @@ void NdiReceiver::run(std::stop_token st) {
             haveSrcTs = false;
             synthK = 0;
             alphaThisConn = false;
-            MOO_LOGI("in%d: connecting to '%s'", index_, src->name.c_str());
+            KLOUD_LOGI("in%d: connecting to '%s'", index_, src->name.c_str());
         }
 
         if (const uint8_t want = tally_.load(std::memory_order_relaxed);
@@ -220,7 +220,7 @@ void NdiReceiver::run(std::stop_token st) {
             }
 
             if (!ring_ || !(ring_->desc() == d)) {
-                MOO_LOGI("in%d: format %dx%d @ %d/%d%s", index_, d.width,
+                KLOUD_LOGI("in%d: format %dx%d @ %d/%d%s", index_, d.width,
                          d.height, vf.frame_rate_N, vf.frame_rate_D,
                          d.hasAlpha() ? " +alpha" : "");
                 const int slots =
@@ -299,7 +299,7 @@ void NdiReceiver::run(std::stop_token st) {
                                 if (++badCadence > 8) {
                                     ptsSynth = true;
                                     synthCtr.add();
-                                    MOO_LOGW("in%d: sender timestamps unusable, "
+                                    KLOUD_LOGW("in%d: sender timestamps unusable, "
                                              "synthesizing pts", index_);
                                 }
                             } else {
@@ -346,4 +346,4 @@ void NdiReceiver::run(std::stop_token st) {
     }
 }
 
-}  // namespace moo
+}  // namespace kloud

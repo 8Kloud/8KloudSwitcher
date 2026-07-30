@@ -13,7 +13,7 @@ module.exports = function getPresets(self) {
 	const presets = {}
 	// Connection label for variable references in button text; presets are
 	// rebuilt after init, when the label is known.
-	const label = self.label || 'mooswitcher'
+	const label = self.label || '8kloud-switcher'
 
 	for (let n = 1; n <= self.inputCount(); ++n) {
 		presets[`pgm_${n}`] = {

@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
 
-// moo-latmeter: NDI receiver that decodes moo-testgen's strips and reports
+// kloud-latmeter: NDI receiver that decodes kloud-testgen's strips and reports
 // end-to-end latency, frame continuity, effective fps, and A/V sync offset.
 //
 // Latency = CLOCK_REALTIME(now) - wallclock strip (valid same-host, or across
@@ -41,7 +41,7 @@
 #include "core/MediaClock.h"
 #include "ndi/NdiLib.h"
 
-namespace pat = moo::pattern;
+namespace pat = kloud::pattern;
 
 namespace {
 
@@ -49,7 +49,7 @@ volatile std::sig_atomic_t g_stop = 0;
 void onSignal(int) { g_stop = 1; }
 
 struct Options {
-    std::string source = "MooTestgen";
+    std::string source = "KloudTestgen";
     double findTimeout = 10.0;
     double duration = 0;  // 0 = until signal
     std::string csvPath;
@@ -76,7 +76,7 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.quiet = true;
         } else {
             fprintf(stderr,
-                    "usage: moo-latmeter [--source SUBSTR] [--find-timeout S]\n"
+                    "usage: kloud-latmeter [--source SUBSTR] [--find-timeout S]\n"
                     "                    [--duration S] [--csv PATH] [--quiet]\n");
             return false;
         }
@@ -104,14 +104,14 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    if (!moo::ndi::initialize()) return 1;
+    if (!kloud::ndi::initialize()) return 1;
 
     // -- discover the source --
     NDIlib_find_create_t findDesc{};
     findDesc.show_local_sources = true;
     NDIlib_find_instance_t finder = NDIlib_find_create_v2(&findDesc);
     if (!finder) {
-        MOO_LOGE("NDIlib_find_create_v2 failed");
+        KLOUD_LOGE("NDIlib_find_create_v2 failed");
         return 1;
     }
 
@@ -119,8 +119,8 @@ int main(int argc, char** argv) {
     NDIlib_source_t source{};
     bool found = false;
     const int64_t findDeadline =
-        moo::MediaClock::nowNs() + int64_t(opt.findTimeout * 1e9);
-    while (!g_stop && !found && moo::MediaClock::nowNs() < findDeadline) {
+        kloud::MediaClock::nowNs() + int64_t(opt.findTimeout * 1e9);
+    while (!g_stop && !found && kloud::MediaClock::nowNs() < findDeadline) {
         NDIlib_find_wait_for_sources(finder, 500);
         uint32_t count = 0;
         const NDIlib_source_t* list = NDIlib_find_get_current_sources(finder, &count);
@@ -133,23 +133,23 @@ int main(int argc, char** argv) {
         }
     }
     if (!found) {
-        MOO_LOGE("no NDI source matching '%s' within %.1fs", opt.source.c_str(),
+        KLOUD_LOGE("no NDI source matching '%s' within %.1fs", opt.source.c_str(),
                  opt.findTimeout);
         NDIlib_find_destroy(finder);
-        moo::ndi::destroy();
+        kloud::ndi::destroy();
         return 2;
     }
-    MOO_LOGI("connecting to '%s'", source.p_ndi_name);
+    KLOUD_LOGI("connecting to '%s'", source.p_ndi_name);
 
     NDIlib_recv_create_v3_t recvDesc{};
     recvDesc.source_to_connect_to = source;
     recvDesc.color_format = NDIlib_recv_color_format_fastest;  // UYVY
     recvDesc.bandwidth = NDIlib_recv_bandwidth_highest;
     recvDesc.allow_video_fields = false;
-    recvDesc.p_ndi_recv_name = "moo-latmeter";
+    recvDesc.p_ndi_recv_name = "kloud-latmeter";
     NDIlib_recv_instance_t recv = NDIlib_recv_create_v3(&recvDesc);
     if (!recv) {
-        MOO_LOGE("NDIlib_recv_create_v3 failed");
+        KLOUD_LOGE("NDIlib_recv_create_v3 failed");
         return 1;
     }
     NDIlib_find_destroy(finder);  // after recv holds its own copy of the source
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
     if (!opt.csvPath.empty()) {
         csv = fopen(opt.csvPath.c_str(), "w");
         if (!csv) {
-            MOO_LOGE("cannot open csv '%s'", opt.csvPath.c_str());
+            KLOUD_LOGE("cannot open csv '%s'", opt.csvPath.c_str());
             return 2;
         }
         fprintf(csv,
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
     }
 
     // -- receive loop --
-    const int64_t startNs = moo::MediaClock::nowNs();
+    const int64_t startNs = kloud::MediaClock::nowNs();
     const int64_t endNs =
         opt.duration > 0 ? startNs + int64_t(opt.duration * 1e9) : 0;
 
@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
     double latAvgAll = 0;
     int64_t latCountAll = 0;
 
-    while (!g_stop && (endNs == 0 || moo::MediaClock::nowNs() < endNs)) {
+    while (!g_stop && (endNs == 0 || kloud::MediaClock::nowNs() < endNs)) {
         NDIlib_video_frame_v2_t vf{};
         NDIlib_audio_frame_v3_t af{};
         const NDIlib_frame_type_e ft =
@@ -259,13 +259,13 @@ int main(int argc, char** argv) {
             NDIlib_recv_free_audio_v3(recv, &af);
         }
 
-        const int64_t nowNs = moo::MediaClock::nowNs();
+        const int64_t nowNs = kloud::MediaClock::nowNs();
         if (nowNs - winStart >= 1'000'000'000) {
             const double dt = double(nowNs - winStart) / 1e9;
             const double fps = winFrames / dt;
             const double lavg = winLatCount ? winLatSum / winLatCount : NAN;
             if (!opt.quiet)
-                MOO_LOGI(
+                KLOUD_LOGI(
                     "fps=%6.2f frames=%lld gaps=%lld bad=%lld lat(ms) "
                     "avg=%6.2f min=%6.2f max=%6.2f av=%+.2fms",
                     fps, (long long)totalFrames, (long long)totalGaps,
@@ -290,9 +290,9 @@ int main(int argc, char** argv) {
     }
 
     NDIlib_recv_destroy(recv);
-    moo::ndi::destroy();
+    kloud::ndi::destroy();
 
-    MOO_LOGI("summary: frames=%lld gaps=%lld bad=%lld lat_avg=%.2fms av=%+.2fms",
+    KLOUD_LOGI("summary: frames=%lld gaps=%lld bad=%lld lat_avg=%.2fms av=%+.2fms",
              (long long)totalFrames, (long long)totalGaps, (long long)totalBad,
              latCountAll ? latAvgAll / latCountAll : NAN, avOffsetMs);
     if (csv) fclose(csv);

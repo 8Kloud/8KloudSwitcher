@@ -1,8 +1,8 @@
 # Remote control (TCP + Bitfocus Companion)
 
-MooSwitcher listens for remote-control clients on a TCP port: the GUI on
+8Kloud Switcher listens for remote-control clients on a TCP port: the GUI on
 **9923** by default (`--control-port N` to change, `0` to disable), and
-`moo-headless` only when given `--control-port N` (benches run several
+`kloud-headless` only when given `--control-port N` (benches run several
 instances side by side, so headless defaults off). The listener binds
 `0.0.0.0` — the LAN is trusted, same as NDI. A failed bind (port taken)
 logs and disables remote control; it never stops the show.
@@ -15,21 +15,21 @@ is dropped.
 The bundled module lives in `companion/`. Build it once:
 
 ```sh
-cd companion && npm install && npm run package   # -> mooswitcher-1.0.0.tgz
+cd companion && npm install && npm run package   # -> 8kloud-switcher-1.0.0.tgz
 ```
 
-- **Companion 4.x**: import `mooswitcher-1.0.0.tgz` under
+- **Companion 4.x**: import `8kloud-switcher-1.0.0.tgz` under
   Modules → Import module package.
 - **Companion 3.x**: extract the tgz and point the launcher's *Developer
   modules path* at a directory containing the extracted `pkg/` folder
-  (rename it e.g. `mooswitcher/`).
+  (rename it e.g. `8kloud-switcher/`).
 - **Any Companion / no module**: the wire protocol below is plain text —
   the built-in *Generic TCP/UDP* module works for actions (no feedback).
 
 Add the connection with the switcher's IP and port. The module provides
 actions (buses, transitions, DSK, media, record, audio), tally feedbacks
 (program red / preview green, DSK, FTB, recording, SRT, signal-loss,
-mute), variables (`$(mooswitcher:program_name)`, `record_time`,
+mute), variables (`$(8kloud-switcher:program_name)`, `record_time`,
 `input_N_name`, …) and drag-and-drop presets under Program / Preview /
 Transport. `companion/test/smoke.js` is an integration test that drives a
 live switcher through the real module code.

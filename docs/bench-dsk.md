@@ -33,7 +33,7 @@ A sticky-UYVA 8K ring holds `(kSlots + N + 2) × 99.5 MB` pinned WC staging
 
 ## E2E (headless)
 
-`moo-testgen --uyva` (blue lower-third band, opaque strip rows, soft edge
+`kloud-testgen --uyva` (blue lower-third band, opaque strip rows, soft edge
 ramps) keyed over bars via `--dsk 0:1 --dsk-toggle-after ...`: PPM dumps
 show fade-in/out of the band, transparency outside it, the key's strip
 rows opaque over program, and the red DSK tally border on the key source's

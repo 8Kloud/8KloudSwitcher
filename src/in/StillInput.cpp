@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -35,7 +35,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-namespace moo {
+namespace kloud {
 
 StillInput::StillInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue,
                        std::string path, int index, int64_t fpsN,
@@ -74,7 +74,7 @@ bool StillInput::publishFrame(const AVFrame* frame) {
     const int width = (frame->width + 1) & ~1;
     const int height = frame->height;
     if (width != frame->width)
-        MOO_LOGW("in%d(still): odd width %d scaled to %d", index_,
+        KLOUD_LOGW("in%d(still): odd width %d scaled to %d", index_,
                  frame->width, width);
 
     std::vector<uint8_t> rgba(size_t(width) * height * 4);
@@ -154,7 +154,7 @@ bool StillInput::publishFrame(const AVFrame* frame) {
     connected_.store(true, std::memory_order_release);
     frames_.store(1, std::memory_order_relaxed);
     Stats::counter("in" + std::to_string(index_) + ".frames").add();
-    MOO_LOGI("in%d(still): opened '%s', %dx%d%s", index_, path_.c_str(),
+    KLOUD_LOGI("in%d(still): opened '%s', %dx%d%s", index_, path_.c_str(),
              width, height, hasAlpha ? " +alpha" : "");
     return true;
 }
@@ -175,21 +175,21 @@ void StillInput::run(std::stop_token stop) {
     };
 
     if (!input || !packet || !frame) {
-        MOO_LOGE("in%d(still): FFmpeg allocation failed", index_);
+        KLOUD_LOGE("in%d(still): FFmpeg allocation failed", index_);
         cleanup();
         return;
     }
     input->interrupt_callback = {&StillInput::interruptCb, this};
     if (avformat_open_input(&input, path_.c_str(), nullptr, nullptr) < 0 ||
         avformat_find_stream_info(input, nullptr) < 0) {
-        MOO_LOGE("in%d(still): could not open '%s'", index_, path_.c_str());
+        KLOUD_LOGE("in%d(still): could not open '%s'", index_, path_.c_str());
         cleanup();
         return;
     }
     videoIndex =
         av_find_best_stream(input, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (videoIndex < 0) {
-        MOO_LOGE("in%d(still): no decodable image in '%s'", index_,
+        KLOUD_LOGE("in%d(still): no decodable image in '%s'", index_,
                  path_.c_str());
         cleanup();
         return;
@@ -200,7 +200,7 @@ void StillInput::run(std::stop_token stop) {
     decoder = codec ? avcodec_alloc_context3(codec) : nullptr;
     if (!decoder || avcodec_parameters_to_context(decoder, parameters) < 0 ||
         avcodec_open2(decoder, codec, nullptr) < 0) {
-        MOO_LOGE("in%d(still): decoder init failed for '%s'", index_,
+        KLOUD_LOGE("in%d(still): decoder init failed for '%s'", index_,
                  path_.c_str());
         cleanup();
         return;
@@ -228,9 +228,9 @@ void StillInput::run(std::stop_token stop) {
         av_packet_unref(packet);
     }
     if (!published && !stop.stop_requested())
-        MOO_LOGE("in%d(still): image decode failed for '%s'", index_,
+        KLOUD_LOGE("in%d(still): image decode failed for '%s'", index_,
                  path_.c_str());
     cleanup();
 }
 
-}  // namespace moo
+}  // namespace kloud

@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -33,7 +33,7 @@
 #include "shaders/pack_uyvy_comp.spv.h"
 #include "shaders/proxy_down_comp.spv.h"
 
-namespace moo::gpu {
+namespace kloud::gpu {
 
 // C++ mirrors of the GLSL push-constant blocks (std430 offsets).
 struct Compositor::CompositePC {
@@ -107,7 +107,7 @@ Compositor::Compositor(VkEngine& eng, const VideoFormatDesc& show, int mvW,
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(eng_.physical(), &props);
         if (props.limits.maxPushConstantsSize < sizeof(CompositePC)) {
-            MOO_LOGE("maxPushConstantsSize %u < CompositePC %zu -- unsupported "
+            KLOUD_LOGE("maxPushConstantsSize %u < CompositePC %zu -- unsupported "
                      "device",
                      props.limits.maxPushConstantsSize, sizeof(CompositePC));
             std::abort();
@@ -255,7 +255,7 @@ Compositor::Pipe Compositor::makePipe(const uint8_t* spv, size_t size,
     cci.layout = p.layout;
     vkCreateComputePipelines(dev, VK_NULL_HANDLE, 1, &cci, nullptr, &p.pipe);
     vkDestroyShaderModule(dev, mod, nullptr);
-    if (!p.pipe) MOO_LOGE("compute pipeline creation failed");
+    if (!p.pipe) KLOUD_LOGE("compute pipeline creation failed");
     return p;
 }
 
@@ -793,4 +793,4 @@ void Compositor::recordDownCopy(VkCommandBuffer cmd, int fif, int packSlot,
     vkCmdCopyBuffer2(cmd, &ci);
 }
 
-}  // namespace moo::gpu
+}  // namespace kloud::gpu

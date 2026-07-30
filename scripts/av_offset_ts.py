@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Measure A/V sync offset in a captured MooSwitcher MPEG-TS (HEVC + AAC).
+"""Measure A/V sync offset in a captured 8Kloud Switcher MPEG-TS (HEVC + AAC).
 
-Expects moo-testgen content on program: a flash region (256x16 at y=32,
+Expects kloud-testgen content on program: a flash region (256x16 at y=32,
 white on sync frames) and a 1 kHz tone burst starting on the flash frame.
 Reports onset-minus-flash offset: positive = audio late.
 
@@ -64,7 +64,7 @@ def flash_times(path):
 
 
 def onset_times(path, astart, rate):
-    """Tone onsets, moo-latmeter's thresholds: >=50 ms quiet, 0.15 trigger,
+    """Tone onsets, kloud-latmeter's thresholds: >=50 ms quiet, 0.15 trigger,
     0.05 release, hold in between (the burst is a sine ramping from zero)."""
     p = run(["ffmpeg", "-v", "error", "-i", path, "-map", "0:a:0",
              "-ac", "1", "-f", "f32le", "pipe:1"])

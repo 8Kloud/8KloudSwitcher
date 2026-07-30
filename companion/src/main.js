@@ -1,4 +1,4 @@
-// Bitfocus Companion module for MooSwitcher. Talks the line/JSON protocol on
+// Bitfocus Companion module for 8Kloud Switcher. Talks the line/JSON protocol on
 // the switcher's TCP remote-control port (docs/remote-control.md; default
 // 9923). State events drive feedbacks and variables; commands are one-line
 // sends.
@@ -13,7 +13,7 @@ const getPresets = require('./presets')
 // fixed at 21; dropdowns rebuild with live names once connected).
 const DEFAULT_INPUTS = 21
 
-class MooSwitcherInstance extends InstanceBase {
+class KloudSwitcherInstance extends InstanceBase {
 	constructor(internal) {
 		super(internal)
 		this.state = null
@@ -45,8 +45,8 @@ class MooSwitcherInstance extends InstanceBase {
 				width: 12,
 				label: 'Information',
 				value:
-					'Connects to the MooSwitcher remote-control port ' +
-					'(GUI default 9923; moo-headless needs --control-port).',
+					'Connects to the 8Kloud Switcher remote-control port ' +
+					'(GUI default 9923; kloud-headless needs --control-port).',
 			},
 			{
 				type: 'textinput',
@@ -175,4 +175,4 @@ class MooSwitcherInstance extends InstanceBase {
 	}
 }
 
-runEntrypoint(MooSwitcherInstance, UpgradeScripts)
+runEntrypoint(KloudSwitcherInstance, UpgradeScripts)

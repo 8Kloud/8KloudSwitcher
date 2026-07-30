@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
 
-// moo-testgen: NDI test-pattern sender with machine-readable latency strips.
+// kloud-testgen: NDI test-pattern sender with machine-readable latency strips.
 //
 // Emits UYVY color bars with a moving bar, a 64-bit frame counter strip, a
 // send-wallclock strip (CLOCK_REALTIME ns), a flash region + 1 kHz tone burst
@@ -40,11 +40,11 @@
 #include "core/Log.h"
 #include "core/MediaClock.h"
 #include "ndi/NdiLib.h"
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
 #include <libomt.h>
 #endif
 
-namespace pat = moo::pattern;
+namespace pat = kloud::pattern;
 
 namespace {
 
@@ -52,7 +52,7 @@ volatile std::sig_atomic_t g_stop = 0;
 void onSignal(int) { g_stop = 1; }
 
 struct Options {
-    std::string name = "MooTestgen";
+    std::string name = "KloudTestgen";
     int width = 1920;
     int height = 1080;
     int64_t fpsN = 60000;
@@ -114,7 +114,7 @@ bool parseArgs(int argc, char** argv, Options& o) {
         } else if (a == "--mid") {
             o.mid = true;
         } else if (a == "--omt") {
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
             o.omt = true;
 #else
             fprintf(stderr, "built without OMT support\n");
@@ -129,7 +129,7 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.quiet = true;
         } else {
             fprintf(stderr,
-                    "usage: moo-testgen [--name S] [--size WxH] [--fps N/D|F]\n"
+                    "usage: kloud-testgen [--name S] [--size WxH] [--fps N/D|F]\n"
                     "                   [--precompute K] [--duration SECS]\n"
                     "                   [--no-audio] [--noise] [--mid] [--omt]\n"
                     "                   [--uyva] [--premult] [--quiet]\n"
@@ -153,36 +153,36 @@ int main(int argc, char** argv) {
     Options opt;
     if (!parseArgs(argc, argv, opt)) return 2;
     if (opt.width < 1280 || opt.height < 128 || (opt.width & 1)) {
-        MOO_LOGE("size must be even-width, >=1280x128 (strips need the room)");
+        KLOUD_LOGE("size must be even-width, >=1280x128 (strips need the room)");
         return 2;
     }
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
     NDIlib_send_instance_t sender = nullptr;
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
     omt_send_t* omtSender = nullptr;
 #endif
     if (opt.omt) {
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
         omtSender = omt_send_create(opt.name.c_str(), OMTQuality_Default);
         if (!omtSender) {
-            MOO_LOGE("omt_send_create failed");
+            KLOUD_LOGE("omt_send_create failed");
             return 1;
         }
         char addr[512] = {};
         omt_send_getaddress(omtSender, addr, sizeof addr);
-        MOO_LOGI("OMT sender: %s", addr);
+        KLOUD_LOGI("OMT sender: %s", addr);
 #endif
     } else {
-        if (!moo::ndi::initialize()) return 1;
+        if (!kloud::ndi::initialize()) return 1;
         NDIlib_send_create_t sendDesc{};
         sendDesc.p_ndi_name = opt.name.c_str();
         sendDesc.clock_video = false;  // we pace with MediaClock
         sendDesc.clock_audio = false;
         sender = NDIlib_send_create(&sendDesc);
         if (!sender) {
-            MOO_LOGE("NDIlib_send_create failed");
+            KLOUD_LOGE("NDIlib_send_create failed");
             return 1;
         }
     }
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
     if (K <= 0) K = int(1'500'000'000 / frameBytes);
     K = std::max(2, std::min(K, 60));
     if (!opt.quiet)
-        MOO_LOGI("precomputing %d x %dx%d UYVY frames (%.1f MB)", K, opt.width,
+        KLOUD_LOGI("precomputing %d x %dx%d UYVY frames (%.1f MB)", K, opt.width,
                  opt.height, double(frameBytes) * K / 1e6);
 
     std::vector<std::vector<uint8_t>> slots(K);
@@ -234,8 +234,8 @@ int main(int argc, char** argv) {
         pat::sampleForTick(pat::kFlashPeriodTicks, opt.fpsN, opt.fpsD);
     std::vector<float> audioBuf;  // [ch0 samples][ch1 samples]
 
-    moo::MediaClock clock(opt.fpsN, opt.fpsD);
-    moo::MediaClock ideal(opt.fpsN, opt.fpsD);  // origin 0: ideal timeline
+    kloud::MediaClock clock(opt.fpsN, opt.fpsD);
+    kloud::MediaClock ideal(opt.fpsN, opt.fpsD);  // origin 0: ideal timeline
     ideal.startAt(0);
 
     const int64_t t0Real = realtimeNs();
@@ -256,9 +256,9 @@ int main(int argc, char** argv) {
         opt.duration > 0 ? int64_t(opt.duration * opt.fpsN / opt.fpsD) + 1 : 0;
 
     int64_t n = 0, sent = 0, skipped = 0, samplesSent = 0;
-    int64_t windowStartNs = moo::MediaClock::nowNs(), windowFrames = 0;
+    int64_t windowStartNs = kloud::MediaClock::nowNs(), windowFrames = 0;
 
-    MOO_LOGI("sending '%s' %dx%d @ %lld/%lld%s", opt.name.c_str(), opt.width,
+    KLOUD_LOGI("sending '%s' %dx%d @ %lld/%lld%s", opt.name.c_str(), opt.width,
              opt.height, (long long)opt.fpsN, (long long)opt.fpsD,
              opt.audio ? " with audio" : "");
 
@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
         pat::stampFlash(frame, strideBytes, n % pat::kFlashPeriodTicks == 0);
 
         if (opt.omt) {
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
             OMTTally t{};
             omt_send_gettally(omtSender, 0, &t);
             pat::stampTally(frame, strideBytes, t.program != 0, t.preview != 0);
@@ -319,7 +319,7 @@ int main(int argc, char** argv) {
                 audioBuf[size_t(count + i)] = v;
             }
             if (opt.omt) {
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
                 OMTMediaFrame oaf = {};
                 oaf.Type = OMTFrameType_Audio;
                 oaf.Codec = OMTCodec_FPA1;
@@ -356,13 +356,13 @@ int main(int argc, char** argv) {
         }
         n = next;
 
-        const int64_t nowNs = moo::MediaClock::nowNs();
+        const int64_t nowNs = kloud::MediaClock::nowNs();
         if (!opt.quiet && nowNs - windowStartNs >= 5'000'000'000) {
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
             if (opt.omt) {
                 OMTStatistics st{};
                 omt_send_getvideostatistics(omtSender, &st);
-                MOO_LOGI("sent=%lld fps=%.2f skipped=%lld omt[frames=%lld "
+                KLOUD_LOGI("sent=%lld fps=%.2f skipped=%lld omt[frames=%lld "
                          "dropped=%lld enc_ms/f=%.2f mbps=%.1f]",
                          (long long)sent,
                          windowFrames * 1e9 / double(nowNs - windowStartNs),
@@ -374,7 +374,7 @@ int main(int argc, char** argv) {
                              double(nowNs - windowStartNs) * 1e3);
             } else
 #endif
-                MOO_LOGI("sent=%lld fps=%.2f skipped=%lld", (long long)sent,
+                KLOUD_LOGI("sent=%lld fps=%.2f skipped=%lld", (long long)sent,
                          windowFrames * 1e9 / double(nowNs - windowStartNs),
                          (long long)skipped);
             windowStartNs = nowNs;
@@ -383,15 +383,15 @@ int main(int argc, char** argv) {
     }
 
     if (opt.omt) {
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
         omt_send_destroy(omtSender);
 #endif
     } else {
         NDIlib_send_send_video_async_v2(sender, nullptr);  // release last async buffer
         NDIlib_send_destroy(sender);
-        moo::ndi::destroy();
+        kloud::ndi::destroy();
     }
-    MOO_LOGI("done: sent=%lld skipped=%lld audio_samples=%lld", (long long)sent,
+    KLOUD_LOGI("done: sent=%lld skipped=%lld audio_samples=%lld", (long long)sent,
              (long long)skipped, (long long)samplesSent);
     return 0;
 }

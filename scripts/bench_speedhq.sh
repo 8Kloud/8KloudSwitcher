@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Measures NDI SpeedHQ CPU cost on this host: encode (moo-testgen process)
-# and decode (moo-latmeter process) in cores, plus delivered fps/latency.
+# Measures NDI SpeedHQ CPU cost on this host: encode (kloud-testgen process)
+# and decode (kloud-latmeter process) in cores, plus delivered fps/latency.
 # Usage: bench_speedhq.sh [WxH] [seconds] [builddir]
 set -euo pipefail
 
 SIZE="${1:-7680x4320}"
 SECS="${2:-30}"
 BUILD="${3:-build}"
-CSV="$(mktemp /tmp/moobench-XXXX.csv)"
+CSV="$(mktemp /tmp/kloudbench-XXXX.csv)"
 CLK_TCK="$(getconf CLK_TCK)"
 
-"$BUILD/moo-testgen" --size "$SIZE" --name "MooBench" --quiet &
+"$BUILD/kloud-testgen" --size "$SIZE" --name "KloudBench" --quiet &
 TG=$!
 sleep 3
-"$BUILD/moo-latmeter" --source "MooBench" --csv "$CSV" --quiet &
+"$BUILD/kloud-latmeter" --source "KloudBench" --csv "$CSV" --quiet &
 LM=$!
 
 cleanup() { kill "$TG" "$LM" 2>/dev/null || true; wait 2>/dev/null || true; }

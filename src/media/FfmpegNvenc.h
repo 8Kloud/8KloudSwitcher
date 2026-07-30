@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -33,7 +33,7 @@ extern "C" {
 #include <libavutil/hwcontext.h>
 }
 
-namespace moo::media {
+namespace kloud::media {
 
 // hevc_nvenc via CUDA hwframes built on OUR primary context. Low-latency
 // tuned: EncoderConfig::preset + tune ull, CBR with single-frame VBV, no
@@ -72,4 +72,4 @@ private:
     int w_ = 0, h_ = 0;
 };
 
-}  // namespace moo::media
+}  // namespace kloud::media

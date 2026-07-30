@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -29,7 +29,7 @@
 #include "audio/AudioRing.h"
 #include "audio/MixerCore.h"
 
-using namespace moo::audio;
+using namespace kloud::audio;
 
 namespace {
 
@@ -370,7 +370,7 @@ TEST_CASE("input channel: sync-managed lane drops connect backlog at hold releas
     eng.channel(1).pushInterleaved(lr.data(), kBacklog, kSampleRate);
 
     eng.publishMix(0, 1, 0.f, 0.f);
-    eng.start(moo::MediaClock::nowNs());
+    eng.start(kloud::MediaClock::nowNs());
     while (eng.mixTicks() < 4) std::this_thread::sleep_for(std::chrono::milliseconds(2));
     eng.stop();
 
@@ -388,7 +388,7 @@ TEST_CASE("audio engine: sinks receive contiguous sample counters") {
         counts.push_back(frames);
     });
     eng.publishMix(0, 1, 0.f, 0.f);
-    eng.start(moo::MediaClock::nowNs());
+    eng.start(kloud::MediaClock::nowNs());
     while (eng.mixTicks() < 8) std::this_thread::sleep_for(std::chrono::milliseconds(2));
     eng.stop();
 

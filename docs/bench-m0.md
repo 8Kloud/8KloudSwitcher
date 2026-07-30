@@ -1,7 +1,7 @@
 # M0 Bench Report — NDI throughput & instrumentation validation
 
 Date: 2026-07-05 · Host: Ryzen 9 9900X (12C/24T), 62GB DDR5, RTX 5090, CachyOS
-NDI SDK: 6.3.2 (2026-04-13) · Tools: moo-testgen / moo-latmeter (this repo)
+NDI SDK: 6.3.2 (2026-04-13) · Tools: kloud-testgen / kloud-latmeter (this repo)
 
 ## Results
 
@@ -37,7 +37,7 @@ Attempts to force the codec locally all failed (numbers unchanged):
 2. **True SpeedHQ encode/decode cost remains unmeasured** — the plan's #1 risk is still open,
    now scoped precisely: it only concerns remote NDI I/O (real cameras in, program out to
    remote receivers). Measuring it requires a genuinely remote endpoint:
-   - run `moo-testgen`/`moo-latmeter` on a second box across the 10GbE link
+   - run `kloud-testgen`/`kloud-latmeter` on a second box across the 10GbE link
      (link is up — carrier present on `enp104s0f1np1`), or
    - a root-created network namespace on this box (veth pair defeats the shm handshake).
 3. **Latency floor** for the all-local path is ~4.5 ms at 8K (one 66 MB copy) and ~1.4 ms at

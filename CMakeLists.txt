@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(MooSwitcher LANGUAGES CXX)
+project(KloudSwitcher LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,7 @@ find_package(Threads REQUIRED)
 find_package(NDI)
 find_package(Vulkan REQUIRED)
 
-add_library(moo_core STATIC
+add_library(kloud_core STATIC
   src/core/MediaClock.cpp
   src/core/Stats.cpp
   src/engine/SwitcherCore.cpp
@@ -22,14 +22,14 @@ add_library(moo_core STATIC
   src/audio/AudioEngine.cpp
   src/ctl/ControlProtocol.cpp
 )
-target_include_directories(moo_core PUBLIC src)
-target_link_libraries(moo_core PUBLIC Threads::Threads)
-target_compile_options(moo_core PRIVATE -Wall -Wextra)
+target_include_directories(kloud_core PUBLIC src)
+target_link_libraries(kloud_core PUBLIC Threads::Threads)
+target_compile_options(kloud_core PRIVATE -Wall -Wextra)
 
 # -- shaders: GLSL -> SPIR-V (glslc) -> embedded C arrays --
 find_program(GLSLC glslc REQUIRED)
-set(MOO_SHADER_HDRS "")
-function(moo_shader name src)
+set(KLOUD_SHADER_HDRS "")
+function(kloud_shader name src)
   set(spv ${CMAKE_BINARY_DIR}/shaders/${name}.spv)
   set(hdr ${CMAKE_BINARY_DIR}/shaders/${name}.spv.h)
   add_custom_command(OUTPUT ${hdr}
@@ -41,26 +41,26 @@ function(moo_shader name src)
     DEPENDS ${CMAKE_SOURCE_DIR}/shaders/${src} ${CMAKE_SOURCE_DIR}/shaders/ycbcr.glsl
             ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
     VERBATIM)
-  list(APPEND MOO_SHADER_HDRS ${hdr})
-  set(MOO_SHADER_HDRS ${MOO_SHADER_HDRS} PARENT_SCOPE)
+  list(APPEND KLOUD_SHADER_HDRS ${hdr})
+  set(KLOUD_SHADER_HDRS ${KLOUD_SHADER_HDRS} PARENT_SCOPE)
 endfunction()
-moo_shader(composite_comp composite.comp)
-moo_shader(multiview_tile_comp multiview_tile.comp)
-moo_shader(pack_uyvy_comp pack_uyvy.comp)
-moo_shader(pack_nv12_comp pack_nv12.comp)
-moo_shader(proxy_down_comp proxy_down.comp)
-add_custom_target(moo_shaders DEPENDS ${MOO_SHADER_HDRS})
+kloud_shader(composite_comp composite.comp)
+kloud_shader(multiview_tile_comp multiview_tile.comp)
+kloud_shader(pack_uyvy_comp pack_uyvy.comp)
+kloud_shader(pack_nv12_comp pack_nv12.comp)
+kloud_shader(proxy_down_comp proxy_down.comp)
+add_custom_target(kloud_shaders DEPENDS ${KLOUD_SHADER_HDRS})
 
-add_library(moo_gpu STATIC
+add_library(kloud_gpu STATIC
   src/gpu/VkEngine.cpp
   src/gpu/UploadRing.cpp
   src/gpu/Nv12Ring.cpp
   src/gpu/Compositor.cpp
 )
-target_link_libraries(moo_gpu PUBLIC moo_core Vulkan::Vulkan)
-target_include_directories(moo_gpu PUBLIC ${CMAKE_BINARY_DIR})
-target_compile_options(moo_gpu PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
-add_dependencies(moo_gpu moo_shaders)
+target_link_libraries(kloud_gpu PUBLIC kloud_core Vulkan::Vulkan)
+target_include_directories(kloud_gpu PUBLIC ${CMAKE_BINARY_DIR})
+target_compile_options(kloud_gpu PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
+add_dependencies(kloud_gpu kloud_shaders)
 
 # -- CUDA driver API (libcuda from the driver; headers from the toolkit) --
 find_library(CUDA_DRIVER_LIB cuda HINTS /usr/lib /usr/lib64)
@@ -78,16 +78,16 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 
 pkg_check_modules(FFNVCODEC REQUIRED IMPORTED_TARGET ffnvcodec)
 
-add_library(moo_media STATIC
+add_library(kloud_media STATIC
   src/media/CudaCtx.cpp
   src/media/FfmpegNvenc.cpp
   src/media/NvencDirect.cpp
   src/media/VideoEncoder.cpp
   src/media/AacEncoder.cpp
 )
-target_link_libraries(moo_media PUBLIC moo_gpu CudaDriver PkgConfig::FFMPEG
+target_link_libraries(kloud_media PUBLIC kloud_gpu CudaDriver PkgConfig::FFMPEG
                       PkgConfig::FFNVCODEC ${CMAKE_DL_LIBS})
-target_compile_options(moo_media PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
+target_compile_options(kloud_media PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
 # -- OMT (Open Media Transport): optional, vendored in third_party/omt.
 # Build once with third_party/{libvmx,libomt} (see docs/omt.md); libomt.so is
@@ -107,15 +107,15 @@ else()
 endif()
 
 if(NDI_FOUND)
-  add_library(moo_ndi STATIC src/ndi/NdiLib.cpp)
-  target_link_libraries(moo_ndi PUBLIC moo_core NDI::ndi)
-  target_compile_options(moo_ndi PRIVATE -Wall -Wextra)
+  add_library(kloud_ndi STATIC src/ndi/NdiLib.cpp)
+  target_link_libraries(kloud_ndi PUBLIC kloud_core NDI::ndi)
+  target_compile_options(kloud_ndi PRIVATE -Wall -Wextra)
 
   get_filename_component(_ndi_libdir ${NDI_LIBRARY} DIRECTORY)
 
-  foreach(tool moo-testgen moo-latmeter)
+  foreach(tool kloud-testgen kloud-latmeter)
     add_executable(${tool} tools/${tool}/main.cpp)
-    target_link_libraries(${tool} PRIVATE moo_ndi)
+    target_link_libraries(${tool} PRIVATE kloud_ndi)
     target_include_directories(${tool} PRIVATE tools)
     target_compile_options(${tool} PRIVATE -Wall -Wextra)
     # Locate libndi.so.6 next to the SDK without requiring ldconfig.
@@ -125,14 +125,14 @@ if(NDI_FOUND)
   endforeach()
   if(OMT_FOUND)
     # testgen gains an OMT sender for benching (--omt).
-    target_compile_definitions(moo-testgen PRIVATE MOO_HAVE_OMT)
-    target_link_libraries(moo-testgen PRIVATE OMT::omt)
-    set_target_properties(moo-testgen PROPERTIES
+    target_compile_definitions(kloud-testgen PRIVATE KLOUD_HAVE_OMT)
+    target_link_libraries(kloud-testgen PRIVATE OMT::omt)
+    set_target_properties(kloud-testgen PROPERTIES
       BUILD_RPATH "${_ndi_libdir};${_omt_libdir}"
       INSTALL_RPATH "${_ndi_libdir};${_omt_libdir}")
   endif()
 
-  add_library(moo_engine STATIC
+  add_library(kloud_engine STATIC
     src/engine/Engine.cpp
     src/ctl/ControlServer.cpp
     src/in/SrtInput.cpp
@@ -143,28 +143,28 @@ if(NDI_FOUND)
     src/out/NdiOutput.cpp
     src/out/SrtOutput.cpp
   )
-  target_link_libraries(moo_engine PUBLIC moo_gpu moo_ndi moo_media)
-  target_compile_options(moo_engine PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
+  target_link_libraries(kloud_engine PUBLIC kloud_gpu kloud_ndi kloud_media)
+  target_compile_options(kloud_engine PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
   if(OMT_FOUND)
-    target_sources(moo_engine PRIVATE src/omt/OmtInput.cpp)
-    target_compile_definitions(moo_engine PUBLIC MOO_HAVE_OMT)
-    target_link_libraries(moo_engine PUBLIC OMT::omt)
+    target_sources(kloud_engine PRIVATE src/omt/OmtInput.cpp)
+    target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_OMT)
+    target_link_libraries(kloud_engine PUBLIC OMT::omt)
   endif()
 
-  set(_moo_rpath ${_ndi_libdir})
+  set(_kloud_rpath ${_ndi_libdir})
   if(OMT_FOUND)
-    set(_moo_rpath "${_ndi_libdir};${_omt_libdir}")
+    set(_kloud_rpath "${_ndi_libdir};${_omt_libdir}")
   endif()
 
-  add_executable(moo-headless tools/moo-headless/main.cpp)
-  target_link_libraries(moo-headless PRIVATE moo_engine)
-  target_include_directories(moo-headless PRIVATE tools)
-  set_target_properties(moo-headless PROPERTIES
-    BUILD_RPATH "${_moo_rpath}" INSTALL_RPATH "${_moo_rpath}")
+  add_executable(kloud-headless tools/kloud-headless/main.cpp)
+  target_link_libraries(kloud-headless PRIVATE kloud_engine)
+  target_include_directories(kloud-headless PRIVATE tools)
+  set_target_properties(kloud-headless PROPERTIES
+    BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_rpath}")
 
   find_package(Qt6 COMPONENTS Widgets QUIET)
   if(Qt6_FOUND)
-    add_executable(mooswitcher
+    add_executable(8kloud-switcher
       src/ui/main.cpp
       src/ui/MainWindow.cpp
       src/ui/MainWindow.h
@@ -178,13 +178,13 @@ if(NDI_FOUND)
       src/ui/ShowFile.h
       src/ui/resources.qrc
     )
-    set_target_properties(mooswitcher PROPERTIES
+    set_target_properties(8kloud-switcher PROPERTIES
       AUTOMOC ON
       AUTORCC ON
-      BUILD_RPATH "${_moo_rpath}"
-      INSTALL_RPATH "${_moo_rpath}")
-    target_link_libraries(mooswitcher PRIVATE moo_engine Qt6::Widgets)
-    target_compile_options(mooswitcher PRIVATE -Wall -Wextra)
+      BUILD_RPATH "${_kloud_rpath}"
+      INSTALL_RPATH "${_kloud_rpath}")
+    target_link_libraries(8kloud-switcher PRIVATE kloud_engine Qt6::Widgets)
+    target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
   else()
     message(WARNING "Qt6 Widgets not found - GUI app will not be built.")
   endif()
@@ -193,8 +193,8 @@ else()
                   "Set NDI_SDK_DIR or populate third_party/ndi.")
 endif()
 
-option(MOO_BUILD_TESTS "Build unit tests" ON)
-if(MOO_BUILD_TESTS)
+option(KLOUD_BUILD_TESTS "Build unit tests" ON)
+if(KLOUD_BUILD_TESTS)
   include(FetchContent)
   FetchContent_Declare(Catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -203,7 +203,7 @@ if(MOO_BUILD_TESTS)
   FetchContent_MakeAvailable(Catch2)
 
   enable_testing()
-  add_executable(moo_tests
+  add_executable(kloud_tests
     tests/clock_test.cpp
     tests/ring_test.cpp
     tests/switcher_core_test.cpp
@@ -217,15 +217,15 @@ if(MOO_BUILD_TESTS)
     tests/interop_test.cpp
     tests/nvenc_direct_test.cpp
   )
-  target_link_libraries(moo_tests PRIVATE moo_core moo_gpu moo_media Catch2::Catch2WithMain)
-  target_include_directories(moo_tests PRIVATE tools)
+  target_link_libraries(kloud_tests PRIVATE kloud_core kloud_gpu kloud_media Catch2::Catch2WithMain)
+  target_include_directories(kloud_tests PRIVATE tools)
 
   list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
   include(Catch)
-  catch_discover_tests(moo_tests)
+  catch_discover_tests(kloud_tests)
 
-  if(TARGET mooswitcher)
-    add_executable(moo_ui_tests
+  if(TARGET 8kloud-switcher)
+    add_executable(kloud_ui_tests
       tests/ui_output_format_test.cpp
       tests/ui_input_picker_test.cpp
       src/ui/MainWindow.cpp
@@ -239,14 +239,14 @@ if(MOO_BUILD_TESTS)
       src/ui/ShowFile.cpp
       src/ui/ShowFile.h
     )
-    set_target_properties(moo_ui_tests PROPERTIES
+    set_target_properties(kloud_ui_tests PROPERTIES
       AUTOMOC ON
-      BUILD_RPATH "${_moo_rpath}"
-      INSTALL_RPATH "${_moo_rpath}")
-    target_link_libraries(moo_ui_tests PRIVATE
-      moo_engine Qt6::Widgets Catch2::Catch2WithMain)
-    target_compile_options(moo_ui_tests PRIVATE -Wall -Wextra)
-    catch_discover_tests(moo_ui_tests
+      BUILD_RPATH "${_kloud_rpath}"
+      INSTALL_RPATH "${_kloud_rpath}")
+    target_link_libraries(kloud_ui_tests PRIVATE
+      kloud_engine Qt6::Widgets Catch2::Catch2WithMain)
+    target_compile_options(kloud_ui_tests PRIVATE -Wall -Wextra)
+    catch_discover_tests(kloud_ui_tests
       TEST_PREFIX "ui: "
       PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   endif()

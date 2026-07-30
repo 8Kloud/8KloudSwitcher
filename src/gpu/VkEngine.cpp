@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -26,7 +26,7 @@
 
 #include "core/Log.h"
 
-namespace moo::gpu {
+namespace kloud::gpu {
 
 uint64_t Timeline::completed() const {
     uint64_t v = 0;
@@ -45,7 +45,7 @@ bool Timeline::waitCompleted(uint64_t value, uint64_t timeoutNs) const {
 bool VkEngine::init(bool enableValidation) {
     // -- instance --
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    app.pApplicationName = "MooSwitcher";
+    app.pApplicationName = "8Kloud Switcher";
     app.apiVersion = VK_API_VERSION_1_3;
 
     std::vector<const char*> layers;
@@ -60,7 +60,7 @@ bool VkEngine::init(bool enableValidation) {
                 validation_ = true;
             }
         if (!validation_)
-            MOO_LOGW("validation requested but VK_LAYER_KHRONOS_validation not present");
+            KLOUD_LOGW("validation requested but VK_LAYER_KHRONOS_validation not present");
     }
 
     VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
@@ -68,7 +68,7 @@ bool VkEngine::init(bool enableValidation) {
     ici.enabledLayerCount = uint32_t(layers.size());
     ici.ppEnabledLayerNames = layers.data();
     if (vkCreateInstance(&ici, nullptr, &inst_) != VK_SUCCESS) {
-        MOO_LOGE("vkCreateInstance failed");
+        KLOUD_LOGE("vkCreateInstance failed");
         return false;
     }
 
@@ -76,7 +76,7 @@ bool VkEngine::init(bool enableValidation) {
     uint32_t devCount = 0;
     vkEnumeratePhysicalDevices(inst_, &devCount, nullptr);
     if (!devCount) {
-        MOO_LOGE("no Vulkan devices");
+        KLOUD_LOGE("no Vulkan devices");
         return false;
     }
     std::vector<VkPhysicalDevice> devs(devCount);
@@ -92,7 +92,7 @@ bool VkEngine::init(bool enableValidation) {
     }
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(phys_, &props);
-    MOO_LOGI("GPU: %s (Vulkan %u.%u.%u)", props.deviceName,
+    KLOUD_LOGI("GPU: %s (Vulkan %u.%u.%u)", props.deviceName,
              VK_API_VERSION_MAJOR(props.apiVersion),
              VK_API_VERSION_MINOR(props.apiVersion),
              VK_API_VERSION_PATCH(props.apiVersion));
@@ -120,7 +120,7 @@ bool VkEngine::init(bool enableValidation) {
             xferFam = i;
     }
     if (gfxFam == UINT32_MAX) {
-        MOO_LOGE("no graphics+compute queue family");
+        KLOUD_LOGE("no graphics+compute queue family");
         return false;
     }
     const uint32_t xferQueues =
@@ -153,7 +153,7 @@ bool VkEngine::init(bool enableValidation) {
     };
     std::vector<const char*> devExts;
     if (!hasExt(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME)) {
-        MOO_LOGE("VK_KHR_push_descriptor unavailable");
+        KLOUD_LOGE("VK_KHR_push_descriptor unavailable");
         return false;
     }
     devExts.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
@@ -177,7 +177,7 @@ bool VkEngine::init(bool enableValidation) {
     dci.enabledExtensionCount = uint32_t(devExts.size());
     dci.ppEnabledExtensionNames = devExts.data();
     if (vkCreateDevice(phys_, &dci, nullptr, &dev_) != VK_SUCCESS) {
-        MOO_LOGE("vkCreateDevice failed");
+        KLOUD_LOGE("vkCreateDevice failed");
         return false;
     }
 
@@ -193,10 +193,10 @@ bool VkEngine::init(bool enableValidation) {
             xferDown_ = xferUp_;  // shared queue, shared mutex
         }
     } else {
-        MOO_LOGW("no dedicated transfer family; sharing graphics queue");
+        KLOUD_LOGW("no dedicated transfer family; sharing graphics queue");
         xferUp_ = xferDown_ = gfx_;
     }
-    MOO_LOGI("queues: gfx fam %u, xfer fam %u x%u", gfxFam,
+    KLOUD_LOGI("queues: gfx fam %u, xfer fam %u x%u", gfxFam,
              xferQueues ? xferFam : gfxFam, xferQueues ? xferQueues : 0);
 
     cmdPushDescriptorSet = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(
@@ -415,4 +415,4 @@ VkSemaphoreSubmitInfo VkEngine::timelineSignal(const Timeline& t, uint64_t value
     return timelineWait(t, value, stages);
 }
 
-}  // namespace moo::gpu
+}  // namespace kloud::gpu

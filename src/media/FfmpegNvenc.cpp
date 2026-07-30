@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -31,7 +31,7 @@ extern "C" {
 #include <libavutil/opt.h>
 }
 
-namespace moo::media {
+namespace kloud::media {
 
 bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
                        const EncoderConfig& cfg) {
@@ -50,7 +50,7 @@ bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
     auto* cuctx = static_cast<AVCUDADeviceContext*>(dctx->hwctx);
     cuctx->cuda_ctx = cuda.ctx();
     if (av_hwdevice_ctx_init(hwDev_) < 0) {
-        MOO_LOGE("nvenc: av_hwdevice_ctx_init failed");
+        KLOUD_LOGE("nvenc: av_hwdevice_ctx_init failed");
         return false;
     }
 
@@ -63,13 +63,13 @@ bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
     fctx->height = h_;
     fctx->initial_pool_size = 4;
     if (av_hwframe_ctx_init(hwFrames_) < 0) {
-        MOO_LOGE("nvenc: av_hwframe_ctx_init failed");
+        KLOUD_LOGE("nvenc: av_hwframe_ctx_init failed");
         return false;
     }
 
     const AVCodec* codec = avcodec_find_encoder_by_name("hevc_nvenc");
     if (!codec) {
-        MOO_LOGE("nvenc: hevc_nvenc not available in this FFmpeg");
+        KLOUD_LOGE("nvenc: hevc_nvenc not available in this FFmpeg");
         return false;
     }
     enc_ = avcodec_alloc_context3(codec);
@@ -94,12 +94,12 @@ bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
     if (const int r = avcodec_open2(enc_, codec, nullptr); r < 0) {
         char buf[128];
         av_strerror(r, buf, sizeof buf);
-        MOO_LOGE("nvenc: avcodec_open2 failed: %s", buf);
+        KLOUD_LOGE("nvenc: avcodec_open2 failed: %s", buf);
         avcodec_free_context(&enc_);
         return false;
     }
     frame_ = av_frame_alloc();
-    MOO_LOGI("nvenc: hevc %dx%d @ %.3f fps, %d kbps CBR (%s/ull)", w_, h_, fps,
+    KLOUD_LOGI("nvenc: hevc %dx%d @ %.3f fps, %d kbps CBR (%s/ull)", w_, h_, fps,
              bitrateKbps, preset);
     return true;
 }
@@ -125,7 +125,7 @@ bool FfmpegNvenc::receiveAll(std::vector<AVPacket*>& out) {
         }
         if (r < 0) {
             av_packet_free(&pkt);
-            MOO_LOGE("nvenc: receive_packet error %d", r);
+            KLOUD_LOGE("nvenc: receive_packet error %d", r);
             return false;
         }
         out.push_back(pkt);
@@ -137,7 +137,7 @@ bool FfmpegNvenc::encode(CUdeviceptr src, int64_t pts,
     cuda_->makeCurrent();
     av_frame_unref(frame_);
     if (av_hwframe_get_buffer(hwFrames_, frame_, 0) < 0) {
-        MOO_LOGE("nvenc: hwframe_get_buffer failed");
+        KLOUD_LOGE("nvenc: hwframe_get_buffer failed");
         return false;
     }
 
@@ -162,7 +162,7 @@ bool FfmpegNvenc::encode(CUdeviceptr src, int64_t pts,
 
     frame_->pts = pts;
     if (const int r = avcodec_send_frame(enc_, frame_); r < 0) {
-        MOO_LOGE("nvenc: send_frame error %d", r);
+        KLOUD_LOGE("nvenc: send_frame error %d", r);
         return false;
     }
     return receiveAll(out);
@@ -174,4 +174,4 @@ bool FfmpegNvenc::drain(std::vector<AVPacket*>& out) {
     return receiveAll(out);
 }
 
-}  // namespace moo::media
+}  // namespace kloud::media

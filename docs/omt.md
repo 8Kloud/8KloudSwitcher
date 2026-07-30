@@ -1,6 +1,6 @@
 # OMT (Open Media Transport) input
 
-MooSwitcher can ingest OMT sources (vMix's open, MIT-licensed NDI
+8Kloud Switcher can ingest OMT sources (vMix's open, MIT-licensed NDI
 alternative — VMX intra codec over TCP, mDNS discovery). Support is
 optional: CMake enables it when `third_party/omt/` is populated.
 
@@ -37,7 +37,7 @@ from the same directory (rpath is wired by CMake).
 
 ## Using OMT inputs
 
-- Headless: `moo-headless --omt-input "HOSTNAME (Name)"` (discovery name)
+- Headless: `kloud-headless --omt-input "HOSTNAME (Name)"` (discovery name)
   or `--omt-input omt://host:port` (direct, senders bind from 6400 up).
 - GUI source picker: the discovery list shows NDI and OMT sources together
   (badged `NDI`/`OMT`; the row carries its type, so bare OMT names never
@@ -48,7 +48,7 @@ from the same directory (rpath is wired by CMake).
 - Frame sync (`--framesync IDX[:N]`, per-input GUI checkbox) works on OMT
   inputs; sender timestamps are 100 ns units like NDI's and get the same
   cadence sanity check + synthesized-pts fallback.
-- Test sender: `moo-testgen --omt [--noise] [--size WxH]` (VMX encode
+- Test sender: `kloud-testgen --omt [--noise] [--size WxH]` (VMX encode
   happens in-process; the 5 s stats line reports encoder ms/frame, Mbps,
   and transport-envelope drops).
 

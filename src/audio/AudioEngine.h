@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -32,7 +32,7 @@
 #include "audio/MixerCore.h"
 #include "core/MediaClock.h"
 
-namespace moo::audio {
+namespace kloud::audio {
 
 constexpr int kRingFrames = 24000;    // 0.5 s of buffered source audio
 constexpr int kPrefillFrames = 960;   // 20 ms arm level before a channel plays
@@ -174,4 +174,4 @@ private:
     std::jthread thread_;
 };
 
-}  // namespace moo::audio
+}  // namespace kloud::audio

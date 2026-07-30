@@ -1,13 +1,13 @@
 {
 	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
-	"id": "mooswitcher",
-	"name": "mooswitcher",
-	"shortname": "mooswitcher",
-	"description": "Control the MooSwitcher live video switcher (buses, transitions, DSKs, media, recording, audio) over its TCP remote-control port",
+	"id": "8kloud-switcher",
+	"name": "8kloud-switcher",
+	"shortname": "8kloud-switcher",
+	"description": "Control the 8Kloud Switcher live video switcher (buses, transitions, DSKs, media, recording, audio) over its TCP remote-control port",
 	"version": "1.0.2",
 	"license": "MIT",
-	"repository": "https://github.com/moocowsheep/MooSwitcher",
-	"bugs": "https://github.com/moocowsheep/MooSwitcher/issues",
+	"repository": "https://github.com/moocowsheep/8KloudSwitcher",
+	"bugs": "https://github.com/moocowsheep/8KloudSwitcher/issues",
 	"maintainers": [
 		{
 			"name": "moocowsheep"
@@ -20,7 +20,7 @@
 		"apiVersion": "0.0.0",
 		"entrypoint": "../src/main.js"
 	},
-	"manufacturer": "MooSwitcher",
-	"products": ["MooSwitcher"],
+	"manufacturer": "8Kloud Switcher",
+	"products": ["8Kloud Switcher"],
 	"keywords": ["switcher", "video", "ndi", "srt"]
 }

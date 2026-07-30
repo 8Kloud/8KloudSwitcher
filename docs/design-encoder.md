@@ -54,8 +54,8 @@ in-band parameter sets for MPEG-TS (extradata for Matroska).
 ## Selection
 
 ```sh
-./build/moo-headless --encoder direct --srt-out "srt://:9720?mode=listener"
-./build/mooswitcher  --encoder ffmpeg --encoder-preset p4
+./build/kloud-headless --encoder direct --srt-out "srt://:9720?mode=listener"
+./build/8kloud-switcher  --encoder ffmpeg --encoder-preset p4
 #   --encoder        auto | ffmpeg | direct
 #   --encoder-preset auto | p1..p7
 ```

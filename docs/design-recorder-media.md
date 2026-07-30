@@ -24,7 +24,7 @@ layers,
 
 ISO recording remains a later layer. Clean-feed recording and NDI output are
 implemented separately in `design-clean-feed.md`. Instant replay is
-intentionally outside MooSwitcher's scope.
+intentionally outside 8Kloud Switcher's scope.
 
 ## Recorder architecture
 

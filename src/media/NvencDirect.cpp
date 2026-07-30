@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -32,7 +32,7 @@ extern "C" {
 #include <libavutil/mem.h>
 }
 
-namespace moo::media {
+namespace kloud::media {
 namespace {
 
 // The pack ring is fixed-size, so registrations are too; more than this means
@@ -54,7 +54,7 @@ const NvencLib& nvencLib() {
         NvencLib l;
         void* h = dlopen("libnvidia-encode.so.1", RTLD_LAZY | RTLD_LOCAL);
         if (!h) {
-            MOO_LOGW("nvenc-direct: %s", dlerror());
+            KLOUD_LOGW("nvenc-direct: %s", dlerror());
             return l;
         }
         l.createInstance = reinterpret_cast<decltype(l.createInstance)>(
@@ -62,7 +62,7 @@ const NvencLib& nvencLib() {
         l.maxVersion = reinterpret_cast<decltype(l.maxVersion)>(
             dlsym(h, "NvEncodeAPIGetMaxSupportedVersion"));
         if (!l.createInstance || !l.maxVersion)
-            MOO_LOGW("nvenc-direct: libnvidia-encode is missing API entry points");
+            KLOUD_LOGW("nvenc-direct: libnvidia-encode is missing API entry points");
         return l;
     }();
     return lib;
@@ -92,7 +92,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     const NvencLib& lib = nvencLib();
     if (!lib.createInstance) return false;
     if (!cuda.ok()) {
-        MOO_LOGE("nvenc-direct: no CUDA context");
+        KLOUD_LOGE("nvenc-direct: no CUDA context");
         return false;
     }
 
@@ -103,7 +103,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     // pitch*height. Pitch must be a multiple of 4 and the frame dimensions
     // even; every show format we accept already is.
     if (w_ <= 0 || h_ <= 0 || w_ % 4 != 0 || h_ % 2 != 0) {
-        MOO_LOGE("nvenc-direct: %dx%d unsupported (need pitch %%4, even height)",
+        KLOUD_LOGE("nvenc-direct: %dx%d unsupported (need pitch %%4, even height)",
                  w_, h_);
         return false;
     }
@@ -119,7 +119,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
         (NVENCAPI_MAJOR_VERSION << 4) | NVENCAPI_MINOR_VERSION;
     if (lib.maxVersion(&driverVersion) != NV_ENC_SUCCESS ||
         driverVersion < needVersion) {
-        MOO_LOGE("nvenc-direct: driver NVENC API %u.%u < headers %d.%d",
+        KLOUD_LOGE("nvenc-direct: driver NVENC API %u.%u < headers %d.%d",
                  driverVersion >> 4, driverVersion & 0xf,
                  NVENCAPI_MAJOR_VERSION, NVENCAPI_MINOR_VERSION);
         return false;
@@ -128,7 +128,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     api_ = {};
     api_.version = NV_ENCODE_API_FUNCTION_LIST_VER;
     if (const NVENCSTATUS s = lib.createInstance(&api_); s != NV_ENC_SUCCESS) {
-        MOO_LOGE("nvenc-direct: NvEncodeAPICreateInstance failed (%d)", int(s));
+        KLOUD_LOGE("nvenc-direct: NvEncodeAPICreateInstance failed (%d)", int(s));
         return false;
     }
 
@@ -140,7 +140,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     session.apiVersion = NVENCAPI_VERSION;
     if (const NVENCSTATUS s = api_.nvEncOpenEncodeSessionEx(&session, &enc_);
         s != NV_ENC_SUCCESS) {
-        MOO_LOGE("nvenc-direct: session open failed (%d)", int(s));
+        KLOUD_LOGE("nvenc-direct: session open failed (%d)", int(s));
         enc_ = nullptr;
         return false;
     }
@@ -219,7 +219,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
         return false;
     }
 
-    MOO_LOGI("nvenc-direct: hevc %dx%d @ %.3f fps, %d kbps CBR (%s/ull)", w_, h_,
+    KLOUD_LOGI("nvenc-direct: hevc %dx%d @ %.3f fps, %d kbps CBR (%s/ull)", w_, h_,
              fps, bitrateKbps, encoderPresetName(preset));
     return true;
 }
@@ -291,7 +291,7 @@ NV_ENC_REGISTERED_PTR NvencDirect::registrationFor(CUdeviceptr src) {
         if (r.ptr == src) return r.handle;
 
     if (regs_.size() >= kMaxRegistrations) {
-        MOO_LOGE("nvenc-direct: too many distinct input buffers (%zu)",
+        KLOUD_LOGE("nvenc-direct: too many distinct input buffers (%zu)",
                  regs_.size());
         return nullptr;
     }
@@ -397,8 +397,8 @@ bool NvencDirect::drain(std::vector<AVPacket*>&) {
 
 void NvencDirect::logLast(const char* what, NVENCSTATUS status) const {
     const char* detail = enc_ ? api_.nvEncGetLastErrorString(enc_) : nullptr;
-    MOO_LOGE("nvenc-direct: %s failed (%d)%s%s", what, int(status),
+    KLOUD_LOGE("nvenc-direct: %s failed (%d)%s%s", what, int(status),
              detail ? ": " : "", detail ? detail : "");
 }
 
-}  // namespace moo::media
+}  // namespace kloud::media

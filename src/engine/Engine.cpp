@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -35,13 +35,13 @@
 #include "out/FileRecorder.h"
 #include "out/NdiOutput.h"
 #include "out/SrtOutput.h"
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
 #include <libomt.h>
 
 #include "omt/OmtInput.h"
 #endif
 
-namespace moo {
+namespace kloud {
 
 namespace {
 void normalizeInputSpec(InputSpec& spec) {
@@ -84,7 +84,7 @@ std::vector<NdiFinder::Source> Engine::ndiSources() const {
 
 std::vector<std::string> Engine::omtSources() const {
     std::vector<std::string> out;
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
     int count = 0;
     char** addrs = omt_discovery_getaddresses(&count);
     for (int i = 0; addrs && i < count; ++i)
@@ -150,7 +150,7 @@ void Engine::requestRecordingImpl(std::string path, bool clean) {
     std::shared_ptr<FileRecorder> next;
     if (!path.empty()) {
         if (!started_.load(std::memory_order_acquire) || !cuda_.ok()) {
-            MOO_LOGE("record: engine/CUDA is not ready");
+            KLOUD_LOGE("record: engine/CUDA is not ready");
         } else {
             next = std::make_shared<FileRecorder>(
                 cuda_, *comp_, renderTL_, path, cfg_.show, cfg_.audio,
@@ -241,7 +241,7 @@ bool Engine::start(const EngineConfig& cfg) {
     const bool cudaAvailable =
         vk_.hasExternalMemoryFd && cuda_.init(vk_.deviceUuid());
     if (needCuda && !cudaAvailable) {
-        MOO_LOGE("SRT/media requested but Vulkan/CUDA interop unavailable");
+        KLOUD_LOGE("SRT/media requested but Vulkan/CUDA interop unavailable");
         return false;
     }
 
@@ -263,12 +263,12 @@ bool Engine::start(const EngineConfig& cfg) {
             inputs_.push_back(std::make_unique<StillInput>(
                 vk_, q, spec.ref, int(i), cfg_.show.fpsN, cfg_.show.fpsD));
         else if (spec.type == InputSpec::Type::Omt)
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
             inputs_.push_back(std::make_unique<OmtInput>(
                 vk_, q, spec.ref, int(i), spec.syncFrames));
 #else
         {
-            MOO_LOGE("in%d: OMT input requested but built without OMT SDK; "
+            KLOUD_LOGE("in%d: OMT input requested but built without OMT SDK; "
                      "input will stay dark", int(i));
             inputs_.push_back(std::make_unique<NdiReceiver>(
                 vk_, q, *finder_, spec.ref, int(i), spec.syncFrames));
@@ -294,7 +294,7 @@ bool Engine::start(const EngineConfig& cfg) {
             cfg_.show,
             cfg_.audio);
         if (!srtOut_->ok()) {
-            MOO_LOGE("SRT out init failed; disabling");
+            KLOUD_LOGE("SRT out init failed; disabling");
             srtOut_.reset();
         }
     }
@@ -339,7 +339,7 @@ bool Engine::start(const EngineConfig& cfg) {
     if (audio_) audio_->start(clock_.originNs());
     renderThread_ = std::jthread([this](std::stop_token st) { renderLoop(st); });
     started_ = true;
-    MOO_LOGI("engine started: show %dx%d @ %lld/%lld, %zu inputs, mv %dx%d, "
+    KLOUD_LOGI("engine started: show %dx%d @ %lld/%lld, %zu inputs, mv %dx%d, "
              "ndiOut=%s, cleanNdi=%s",
              cfg_.show.width, cfg_.show.height, (long long)cfg_.show.fpsN,
              (long long)cfg_.show.fpsD, inputs_.size(), comp_->mvWidth(),
@@ -491,7 +491,7 @@ void Engine::stop() {
     vk_.destroy();
     cuda_.destroy();
     started_ = false;
-    MOO_LOGI("engine stopped");
+    KLOUD_LOGI("engine stopped");
 }
 
 bool Engine::copyMultiview(std::vector<uint8_t>& out, uint64_t& lastSeq, int& w,
@@ -663,7 +663,7 @@ void Engine::renderLoop(std::stop_token st) {
                     // One-time on-demand interop bring-up (a user action; the
                     // stall is bounded and counted as skips if it overruns).
                     if (!vk_.hasExternalMemoryFd || !cuda_.init(vk_.deviceUuid())) {
-                        MOO_LOGE("in%d: SRT/media source needs Vulkan/CUDA "
+                        KLOUD_LOGE("in%d: SRT/media source needs Vulkan/CUDA "
                                  "interop; replace refused", idx);
                         continue;
                     }
@@ -682,7 +682,7 @@ void Engine::renderLoop(std::stop_token st) {
                     inputs_[size_t(idx)] = std::make_unique<StillInput>(
                         vk_, q, spec.ref, idx, cfg_.show.fpsN,
                         cfg_.show.fpsD);
-#ifdef MOO_HAVE_OMT
+#ifdef KLOUD_HAVE_OMT
                 else if (spec.type == InputSpec::Type::Omt)
                     inputs_[size_t(idx)] = std::make_unique<OmtInput>(
                         vk_, q, spec.ref, idx, spec.syncFrames);
@@ -720,7 +720,7 @@ void Engine::renderLoop(std::stop_token st) {
                     : spec.type == InputSpec::Type::Media ? " (media)"
                     : spec.type == InputSpec::Type::Still ? " (still)"
                                                          : "";
-                MOO_LOGI("in%d: replaced with '%s'%s", idx, spec.ref.c_str(),
+                KLOUD_LOGI("in%d: replaced with '%s'%s", idx, spec.ref.c_str(),
                          kind);
                 // The dtor joins the capture thread (bounded by its receive
                 // timeout) -- never on the render thread.
@@ -733,7 +733,7 @@ void Engine::renderLoop(std::stop_token st) {
                 if (renderTL_.lastReserved())
                     renderTL_.waitCompleted(renderTL_.lastReserved(),
                                             1'000'000'000);
-                if (!buildLabelAtlas()) MOO_LOGE("label atlas rebuild failed");
+                if (!buildLabelAtlas()) KLOUD_LOGE("label atlas rebuild failed");
                 lastTallyKey = ~0ull;  // re-send tally to the new source
             }
         }
@@ -923,7 +923,7 @@ void Engine::renderLoop(std::stop_token st) {
         if (fifValues_[fif]) {
             while (!renderTL_.waitCompleted(fifValues_[fif], 500'000'000)) {
                 lateWaitCtr.add();
-                MOO_LOGW("render: GPU >500ms behind (value %llu)",
+                KLOUD_LOGW("render: GPU >500ms behind (value %llu)",
                          (unsigned long long)fifValues_[fif]);
                 if (st.stop_requested()) return;
             }
@@ -1035,7 +1035,7 @@ void Engine::renderLoop(std::stop_token st) {
         sd.cmd = cmd;
         sd.waits = waits;
         sd.signalInfos = {&signal, 1};
-        if (vk_.submit(vk_.gfx(), sd) != VK_SUCCESS) MOO_LOGE("render submit failed");
+        if (vk_.submit(vk_.gfx(), sd) != VK_SUCCESS) KLOUD_LOGE("render submit failed");
         fifValues_[fif] = value;
 
         if (doNv && srtOut_ && srtOut_->push({value, n, fif}))
@@ -1077,7 +1077,7 @@ void Engine::renderLoop(std::stop_token st) {
             dsd.waits = {&dwait, 1};
             dsd.signalInfos = {&dsig, 1};
             if (vk_.submit(vk_.xferDown(), dsd) != VK_SUCCESS)
-                MOO_LOGE("down submit failed");
+                KLOUD_LOGE("down submit failed");
             downValues_[fif] = value;
         }
 
@@ -1102,4 +1102,4 @@ void Engine::renderLoop(std::stop_token st) {
     }
 }
 
-}  // namespace moo
+}  // namespace kloud

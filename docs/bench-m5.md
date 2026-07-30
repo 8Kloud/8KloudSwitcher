@@ -36,9 +36,9 @@ vs the mixer); NDI uses SDK send-time timecodes on both streams.
 
 | process | CPU (of one core) |
 |---|---|
-| moo-headless (capture+render+mixer+outputs) | **186 %** |
-| moo-testgen 8K (precomputed) | 75 % |
-| moo-latmeter 8K receive | 57 % |
+| kloud-headless (capture+render+mixer+outputs) | **186 %** |
+| kloud-testgen 8K (precomputed) | 75 % |
+| kloud-latmeter 8K receive | 57 % |
 
 GPU: SM 32 %, NVENC 54 % (one 8K60 HEVC session), mem ctrl 6 %.
 PCIe Gen5 x8 ≈ 32 GB/s — upload (4 GB/s) + readback (4 GB/s) + NVENC
@@ -87,7 +87,7 @@ across hours.
 
 Bench: `scripts/ndi-netns-bench.sh` (net+mount+UTS namespaces fake a second
 machine; veth >> 10 GbE so the codec, not the wire, binds) with
-`moo-testgen --noise` (video-range noise = worst-case codec content; the
+`kloud-testgen --noise` (video-range noise = worst-case codec content; the
 default bars compress ~1000× and hide the codec entirely — which is also
 why every earlier "same-host is uncompressed/free" observation was wrong).
 

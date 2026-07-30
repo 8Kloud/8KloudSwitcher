@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -25,7 +25,7 @@
 #include "core/Log.h"
 #include "gpu/Nv12Ring.h"
 
-namespace moo::gpu {
+namespace kloud::gpu {
 
 GpuFrame::GpuFrame(std::shared_ptr<UploadRing> r, int s, uint64_t v,
                    bool premultiplied)
@@ -180,9 +180,9 @@ uint64_t UploadRing::submit(int slot) {
     VkEngine::SubmitDesc sd;
     sd.cmd = s.cmd;
     sd.signalInfos = {&signal, 1};
-    if (eng_.submit(queue_, sd) != VK_SUCCESS) MOO_LOGE("upload submit failed");
+    if (eng_.submit(queue_, sd) != VK_SUCCESS) KLOUD_LOGE("upload submit failed");
     s.lastSubmit = value;
     return value;
 }
 
-}  // namespace moo::gpu
+}  // namespace kloud::gpu

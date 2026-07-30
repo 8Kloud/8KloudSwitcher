@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -46,7 +46,7 @@
 #include "media/StillImage.h"
 #include "ui/MixerPanel.h"
 
-namespace moo::ui {
+namespace kloud::ui {
 
 namespace {
 
@@ -728,7 +728,7 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
                        QWidget* parent)
     : QMainWindow(parent), bridge_(bridge), showFile_(showFile),
       inputNames_(inputNames) {
-    setWindowTitle(QStringLiteral("MooSwitcher · Live Production"));
+    setWindowTitle(QStringLiteral("8Kloud Switcher · Live Production"));
     setWindowIcon(QIcon(QStringLiteral(":/branding/cow-switcher-logo.svg")));
     setStyleSheet(QLatin1String(kProductionStyle));
     setMinimumSize(1050, 720);
@@ -757,12 +757,12 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
     brandIcon->setFixedSize(44, 44);
     brandIcon->setPixmap(
         QIcon(QStringLiteral(":/branding/cow-switcher-logo.svg")).pixmap(44, 44));
-    brandIcon->setToolTip(QStringLiteral("MooSwitcher"));
+    brandIcon->setToolTip(QStringLiteral("8Kloud Switcher"));
     topRow->addWidget(brandIcon);
 
     auto* brandCol = new QVBoxLayout;
     brandCol->setSpacing(0);
-    auto* brand = new QLabel(QStringLiteral("MOO//SWITCHER"));
+    auto* brand = new QLabel(QStringLiteral("8KLOUD//SWITCHER"));
     brand->setObjectName(QStringLiteral("brandMark"));
     auto* brandCaption = new QLabel(QStringLiteral("LIVE PRODUCTION SYSTEM"));
     brandCaption->setObjectName(QStringLiteral("brandCaption"));
@@ -814,7 +814,7 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
         if (directory.isEmpty()) directory = QDir::homePath();
         const QString suggested =
             QDir(directory).filePath(
-                QStringLiteral("MooSwitcher-%1.mkv")
+                QStringLiteral("8Kloud-Switcher-%1.mkv")
                     .arg(QDateTime::currentDateTime().toString(
                         QStringLiteral("yyyyMMdd-HHmmss"))));
         const QString path = QFileDialog::getSaveFileName(
@@ -864,7 +864,7 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
             QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
         if (directory.isEmpty()) directory = QDir::homePath();
         const QString suggested = QDir(directory).filePath(
-            QStringLiteral("MooSwitcher-Clean-%1.mkv")
+            QStringLiteral("8Kloud-Switcher-Clean-%1.mkv")
                 .arg(QDateTime::currentDateTime().toString(
                     QStringLiteral("yyyyMMdd-HHmmss"))));
         const QString path = QFileDialog::getSaveFileName(
@@ -1830,4 +1830,4 @@ void MainWindow::onDskOptions(bool tie1, bool tie2, bool afv1, bool afv2) {
     }
 }
 
-}  // namespace moo::ui
+}  // namespace kloud::ui

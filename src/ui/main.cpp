@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -37,7 +37,7 @@
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("MooSwitcher"));
+    QApplication::setApplicationName(QStringLiteral("8KloudSwitcher"));
     QApplication::setWindowIcon(
         QIcon(QStringLiteral(":/branding/cow-switcher-logo.svg")));
 
@@ -46,12 +46,12 @@ int main(int argc, char** argv) {
     const QStringList args = app.arguments();
     for (int i = 1; i < args.size() - 1; ++i)
         if (args[i] == QStringLiteral("--show-file")) showFilePath = args[i + 1];
-    moo::ui::ShowFile showFile(showFilePath);
-    moo::ui::ShowFile::State show;
+    kloud::ui::ShowFile showFile(showFilePath);
+    kloud::ui::ShowFile::State show;
     if (showFile.load(show))
-        MOO_LOGI("show restored from %s", showFile.path().toUtf8().constData());
+        KLOUD_LOGI("show restored from %s", showFile.path().toUtf8().constData());
 
-    moo::EngineConfig& cfg = show.cfg;
+    kloud::EngineConfig& cfg = show.cfg;
     QString shotPath;
     QString recordPath;
     QString cleanRecordPath;
@@ -61,22 +61,22 @@ int main(int argc, char** argv) {
     // is expected to be reachable; 0 disables.
     int controlPort = 9923;
     bool cliInputs = false;
-    auto addInput = [&](moo::InputSpec::Type t, const QString& ref) {
+    auto addInput = [&](kloud::InputSpec::Type t, const QString& ref) {
         if (!cliInputs) cfg.inputs.clear();  // CLI replaces the stored set
         cliInputs = true;
         cfg.inputs.push_back({t, ref.toStdString()});
     };
     for (int i = 1; i < args.size(); ++i) {
         if (args[i] == QStringLiteral("--input") && i + 1 < args.size())
-            addInput(moo::InputSpec::Type::Ndi, args[++i]);
+            addInput(kloud::InputSpec::Type::Ndi, args[++i]);
         else if (args[i] == QStringLiteral("--srt-input") && i + 1 < args.size())
-            addInput(moo::InputSpec::Type::Srt, args[++i]);
+            addInput(kloud::InputSpec::Type::Srt, args[++i]);
         else if (args[i] == QStringLiteral("--media-input") &&
                  i + 1 < args.size())
-            addInput(moo::InputSpec::Type::Media, args[++i]);
+            addInput(kloud::InputSpec::Type::Media, args[++i]);
         else if (args[i] == QStringLiteral("--still-input") &&
                  i + 1 < args.size())
-            addInput(moo::InputSpec::Type::Still, args[++i]);
+            addInput(kloud::InputSpec::Type::Still, args[++i]);
         else if (args[i] == QStringLiteral("--validate"))
             cfg.validation = true;
         else if (args[i] == QStringLiteral("--clean-ndi-out") &&
@@ -97,13 +97,13 @@ int main(int argc, char** argv) {
         else if (args[i] == QStringLiteral("--encoder-preset") &&
                  i + 1 < args.size()) {
             const QString name = args[++i];
-            if (!moo::media::parseEncoderPreset(name.toStdString(),
+            if (!kloud::media::parseEncoderPreset(name.toStdString(),
                                                 cfg.encoderPreset))
                 qWarning("unknown --encoder-preset '%s'; using auto",
                          qUtf8Printable(name));
         } else if (args[i] == QStringLiteral("--encoder") && i + 1 < args.size()) {
             const QString name = args[++i];
-            if (!moo::media::parseEncoderBackend(name.toStdString(), cfg.encoder))
+            if (!kloud::media::parseEncoderBackend(name.toStdString(), cfg.encoder))
                 qWarning("unknown --encoder '%s'; using auto",
                          qUtf8Printable(name));
         }
@@ -132,12 +132,12 @@ int main(int argc, char** argv) {
     // black until the operator patches a source from the INPUTS tab.
     constexpr size_t kInputSlots = 21;
     while (cfg.inputs.size() < kInputSlots)
-        cfg.inputs.push_back({moo::InputSpec::Type::Ndi, ""});
+        cfg.inputs.push_back({kloud::InputSpec::Type::Ndi, ""});
     show.chans.resize(cfg.inputs.size());
 
-    moo::Engine engine;
+    kloud::Engine engine;
     if (!engine.start(cfg)) {
-        MOO_LOGE("engine start failed");
+        KLOUD_LOGE("engine start failed");
         return 1;
     }
     if (!recordPath.isEmpty())
@@ -155,18 +155,18 @@ int main(int argc, char** argv) {
             aud->channel(i).delayMs.store(ch.delayMs);
         }
 
-    std::unique_ptr<moo::ctl::ControlServer> control;
+    std::unique_ptr<kloud::ctl::ControlServer> control;
     if (controlPort > 0)
         control =
-            std::make_unique<moo::ctl::ControlServer>(engine, controlPort);
+            std::make_unique<kloud::ctl::ControlServer>(engine, controlPort);
 
     QStringList names;
     for (const auto& n : cfg.inputs) names << QString::fromStdString(n.ref);
 
-    moo::ui::EngineBridge bridge(engine);
-    moo::ui::MainWindow win(bridge, names, &showFile, &show);
+    kloud::ui::EngineBridge bridge(engine);
+    kloud::ui::MainWindow win(bridge, names, &showFile, &show);
     QObject::connect(&app, &QApplication::aboutToQuit, &win,
-                     &moo::ui::MainWindow::saveShow);
+                     &kloud::ui::MainWindow::saveShow);
     win.show();
 
     if (!shotPath.isEmpty()) {
@@ -177,7 +177,7 @@ int main(int argc, char** argv) {
         // occluded/unfocused Wayland windows (stale first buffer).
         QTimer::singleShot(int(shotDelayS * 1000), &win, [&win, &app, shotPath] {
             const bool ok = win.grab().save(shotPath);
-            MOO_LOGI("screenshot %s: %s", ok ? "saved" : "FAILED",
+            KLOUD_LOGI("screenshot %s: %s", ok ? "saved" : "FAILED",
                      shotPath.toUtf8().constData());
             app.quit();
         });

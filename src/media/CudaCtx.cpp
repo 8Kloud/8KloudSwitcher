@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -27,7 +27,7 @@
 
 #include "core/Log.h"
 
-namespace moo::media {
+namespace kloud::media {
 
 const char* CudaCtx::errName(CUresult r) {
     const char* s = nullptr;
@@ -39,7 +39,7 @@ const char* CudaCtx::errName(CUresult r) {
     do {                                                           \
         const CUresult _r = (call);                                \
         if (_r != CUDA_SUCCESS) {                                  \
-            MOO_LOGE("%s failed: %s", #call, errName(_r));         \
+            KLOUD_LOGE("%s failed: %s", #call, errName(_r));         \
             return false;                                          \
         }                                                          \
     } while (0)
@@ -50,7 +50,7 @@ bool CudaCtx::init(const uint8_t vkDeviceUuid[16]) {
     int count = 0;
     CU_CHECK(cuDeviceGetCount(&count));
     if (!count) {
-        MOO_LOGE("no CUDA devices");
+        KLOUD_LOGE("no CUDA devices");
         return false;
     }
     dev_ = 0;
@@ -67,7 +67,7 @@ bool CudaCtx::init(const uint8_t vkDeviceUuid[16]) {
         }
     }
     if (!matched)
-        MOO_LOGW("no CUDA device UUID-matched the Vulkan device; using device 0");
+        KLOUD_LOGW("no CUDA device UUID-matched the Vulkan device; using device 0");
 
     CU_CHECK(cuDevicePrimaryCtxRetain(&ctx_, dev_));
     retained_ = true;
@@ -76,7 +76,7 @@ bool CudaCtx::init(const uint8_t vkDeviceUuid[16]) {
 
     char name[128] = {};
     cuDeviceGetName(name, sizeof name, dev_);
-    MOO_LOGI("CUDA: %s (primary context retained)", name);
+    KLOUD_LOGI("CUDA: %s (primary context retained)", name);
     return true;
 }
 
@@ -101,7 +101,7 @@ bool CudaCtx::importVkFd(int fd, size_t size, Imported& out) {
     hd.size = size;
     const CUresult r = cuImportExternalMemory(&out.extMem, &hd);
     if (r != CUDA_SUCCESS) {
-        MOO_LOGE("cuImportExternalMemory failed: %s", errName(r));
+        KLOUD_LOGE("cuImportExternalMemory failed: %s", errName(r));
         close(fd);  // import failed -> fd still ours
         return false;
     }
@@ -110,7 +110,7 @@ bool CudaCtx::importVkFd(int fd, size_t size, Imported& out) {
     bd.size = size;
     const CUresult r2 = cuExternalMemoryGetMappedBuffer(&out.ptr, out.extMem, &bd);
     if (r2 != CUDA_SUCCESS) {
-        MOO_LOGE("cuExternalMemoryGetMappedBuffer failed: %s", errName(r2));
+        KLOUD_LOGE("cuExternalMemoryGetMappedBuffer failed: %s", errName(r2));
         cuDestroyExternalMemory(out.extMem);
         out = {};
         return false;
@@ -127,4 +127,4 @@ void CudaCtx::release(Imported& im) {
     im = {};
 }
 
-}  // namespace moo::media
+}  // namespace kloud::media

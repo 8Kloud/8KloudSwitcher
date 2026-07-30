@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -40,7 +40,7 @@
 #include "core/Log.h"
 #include "engine/Engine.h"
 
-namespace moo::ctl {
+namespace kloud::ctl {
 
 namespace {
 constexpr size_t kMaxClients = 16;
@@ -58,7 +58,7 @@ ControlServer::ControlServer(Engine& engine, int port)
     : engine_(engine), port_(port) {
     listenFd_ = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (listenFd_ < 0) {
-        MOO_LOGE("control: socket: %s", strerror(errno));
+        KLOUD_LOGE("control: socket: %s", strerror(errno));
         return;
     }
     const int one = 1;
@@ -69,7 +69,7 @@ ControlServer::ControlServer(Engine& engine, int port)
     addr.sin_port = htons(uint16_t(port));
     if (bind(listenFd_, (const sockaddr*)&addr, sizeof addr) != 0 ||
         listen(listenFd_, 8) != 0 || !setNonBlock(listenFd_)) {
-        MOO_LOGE("control: cannot listen on tcp/%d: %s (remote control off)",
+        KLOUD_LOGE("control: cannot listen on tcp/%d: %s (remote control off)",
                  port, strerror(errno));
         close(listenFd_);
         listenFd_ = -1;
@@ -77,7 +77,7 @@ ControlServer::ControlServer(Engine& engine, int port)
     }
     wakeFd_ = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     thread_ = std::jthread([this](std::stop_token st) { run(st); });
-    MOO_LOGI("control: listening on tcp/%d", port);
+    KLOUD_LOGI("control: listening on tcp/%d", port);
 }
 
 ControlServer::~ControlServer() {
@@ -120,7 +120,7 @@ std::string ControlServer::defaultRecordPath(bool clean) const {
     tm local{};
     localtime_r(&now, &local);
     strftime(ts, sizeof ts, "%Y%m%d-%H%M%S", &local);
-    return dir + (clean ? "/MooSwitcher-Clean-" : "/MooSwitcher-") + ts +
+    return dir + (clean ? "/8Kloud Switcher-Clean-" : "/8Kloud Switcher-") + ts +
            ".mkv";
 }
 
@@ -333,7 +333,7 @@ void ControlServer::run(std::stop_token st) {
                            short(POLLIN | (c.out.empty() ? 0 : POLLOUT)), 0});
         if (poll(fds.data(), nfds_t(fds.size()), kPollMs) < 0 &&
             errno != EINTR) {
-            MOO_LOGE("control: poll: %s", strerror(errno));
+            KLOUD_LOGE("control: poll: %s", strerror(errno));
             return;
         }
         if (st.stop_requested()) return;
@@ -352,7 +352,7 @@ void ControlServer::run(std::stop_token st) {
                     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
                     Client c;
                     c.fd = fd;
-                    send(c, "{\"event\":\"hello\",\"name\":\"MooSwitcher\","
+                    send(c, "{\"event\":\"hello\",\"name\":\"8Kloud Switcher\","
                             "\"protocol\":1}");
                     clients_.push_back(std::move(c));
                 }
@@ -421,4 +421,4 @@ void ControlServer::run(std::stop_token st) {
     }
 }
 
-}  // namespace moo::ctl
+}  // namespace kloud::ctl

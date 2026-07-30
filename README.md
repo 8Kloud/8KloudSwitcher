@@ -1,4 +1,4 @@
-# MooSwitcher
+# 8Kloud Switcher
 
 A live video switcher for Linux + NVIDIA: NDI inputs, program/preview switching with
 transitions, NDI and SRT (HEVC/NVENC) program outputs, full audio mixer, Qt 6 GUI with
@@ -22,12 +22,12 @@ M3+M3.5 (SRT/HEVC both directions), M2 (switching/multiview), M1 (Vulkan engine)
 
 ```sh
 # SRT out (listener) + receive with any ffplay/OBS caller:
-./build/mooswitcher --input CamA --input CamB --srt-out "srt://:9710?mode=listener&latency=120000"
+./build/8kloud-switcher --input CamA --input CamB --srt-out "srt://:9710?mode=listener&latency=120000"
 ffplay "srt://HOST:9710?mode=caller"     # latency option is MICROseconds
 # ffplay buffers seconds on live streams; for a low-latency audio monitor use:
 ffmpeg -fflags nobuffer -flags low_delay -i "srt://HOST:9710?mode=caller" -vn -f pulse Mon
 # SRT ingest as an input (audio decodes too; trim its lateness per input):
-./build/mooswitcher --srt-input "srt://HOST:9710?mode=caller&latency=120000" --input CamB
+./build/8kloud-switcher --srt-input "srt://HOST:9710?mode=caller&latency=120000" --input CamB
 # A/V sync check on a TS capture (needs testgen content on program):
 ffmpeg -y -copyts -i "srt://HOST:9710?mode=caller" -c copy -avoid_negative_ts disabled \
        -muxpreload 0 -muxdelay 0 -t 20 cap.ts && python scripts/av_offset_ts.py cap.ts
@@ -35,12 +35,12 @@ ffmpeg -y -copyts -i "srt://HOST:9710?mode=caller" -c copy -avoid_negative_ts di
 
 Run it:
 ```sh
-./build/moo-testgen --name CamA &  ./build/moo-testgen --name CamB &
-./build/mooswitcher --input CamA --input CamB     # or moo-headless for no GUI
+./build/kloud-testgen --name CamA &  ./build/kloud-testgen --name CamB &
+./build/8kloud-switcher --input CamA --input CamB     # or kloud-headless for no GUI
 ```
 
 The show (inputs, outputs, transition, program/preview, full mixer state) persists to
-`~/.config/MooSwitcher/show.ini` (or `--show-file PATH`) and restores on restart; CLI flags
+`~/.config/8KloudSwitcher/show.ini` (or `--show-file PATH`) and restores on restart; CLI flags
 override what they name. Click an input's name in the mixer to pick a different source live —
 the browser lists NDI and OMT discovery together (Open Media Transport ingest is optional,
 8K-capable for realistic content: build steps `docs/omt.md`, measurements `docs/bench-omt.md`;
@@ -53,7 +53,7 @@ sources like SRT loopbacks. Shortcuts: `Space` cut, `Enter` auto, `F` FTB, `1–
 
 Select the program output resolution and progressive frame rate from the **OUTPUT FORMAT**
 controls above the multiview. The choice is saved immediately to the show file; restart
-MooSwitcher when the amber **RESTART TO APPLY** badge appears. The selected format drives
+8Kloud Switcher when the amber **RESTART TO APPLY** badge appears. The selected format drives
 both NDI and SRT program outputs on the next start.
 
 Record the program mix with the red **RECORD** control in the top bar. Recordings
@@ -66,7 +66,7 @@ Use **CLEAN REC** for the switched A/B mix without DSK graphics. The clean feed
 retains transitions, FTB, and master audio. Program and clean recordings can
 run simultaneously with independent NVENC sessions and backpressure. Headless:
 `--clean-record PATH.mkv`; `--record-bitrate` applies to both. An optional
-clean NDI sender is enabled with `--clean-ndi-out "MooSwitcher CLEAN"` in
+clean NDI sender is enabled with `--clean-ndi-out "8Kloud Switcher CLEAN"` in
 either executable and can run alongside normal program NDI. Its enabled state
 and name persist in a GUI show file. Design and validation:
 `docs/design-clean-feed.md`.
@@ -91,7 +91,7 @@ Design and validation notes: `docs/design-recorder-media.md`.
 
 Two downstream keyers composite graphics with **native alpha (NDI/OMT UYVA or a local
 raster still)** over program — point a DSK at an input carrying alpha (CasparCG, OBS with
-alpha, `moo-testgen --uyva`, or a transparent PNG/WebP still), and toggle it on; it fades
+alpha, `kloud-testgen --uyva`, or a transparent PNG/WebP still), and toggle it on; it fades
 over its own duration, independent of transitions, and FTB takes it out with everything
 else. A source without alpha keys fully opaque (a fadeable fullscreen overlay). Headless:
 `--dsk K:SRC --dsk-fade K:TICKS --dsk-toggle-after S:K`. Design:
@@ -139,10 +139,10 @@ NDI discovery needs `avahi-daemon` running.
 
 ```sh
 # Test pattern sender: counter/timestamp strips, flash+tone A/V sync burst
-./build/moo-testgen --size 7680x4320 --fps 60000/1001 --name Cam1
+./build/kloud-testgen --size 7680x4320 --fps 60000/1001 --name Cam1
 
 # Latency analyzer: fps, frame gaps, end-to-end latency, A/V offset
-./build/moo-latmeter --source Cam1 --csv out.csv
+./build/kloud-latmeter --source Cam1 --csv out.csv
 
 # SpeedHQ/transport bench (same-host measures NDI's shared-memory path;
 # run the pair across two machines to measure the actual codec)
@@ -162,16 +162,16 @@ Companion module with tally feedbacks and presets lives in `companion/`.
 - `src/ndi/` — SDK lifecycle wrapper (all NDI includes route through `NdiLib.h`)
 - `src/ctl/` — remote-control wire protocol + TCP server
 - `companion/` — Bitfocus Companion module (`npm run package` → installable tgz)
-- `tools/` — moo-testgen / moo-latmeter + shared pattern layout (`tools/common/pattern.h`)
+- `tools/` — kloud-testgen / kloud-latmeter + shared pattern layout (`tools/common/pattern.h`)
 - `docs/` — bench reports; the full v1 plan lives with the project owner
 
 ## License
 
 Copyright © 2026 Devin Block.
 
-MooSwitcher is licensed under the **GNU General Public License v3.0 or later**
+8Kloud Switcher is licensed under the **GNU General Public License v3.0 or later**
 (GPL-3.0-or-later) — see [`LICENSE.md`](LICENSE.md). As an additional permission
-under GPLv3 section 7, MooSwitcher may be linked against and distributed with the
+under GPLv3 section 7, 8Kloud Switcher may be linked against and distributed with the
 proprietary **NDI SDK**, the **NVIDIA CUDA / Video Codec SDK** runtime (CUDA,
 NVENC, NVDEC), and the **OMT** (libomt / libvmx) runtime; the full exception text
 is in [`EXCEPTIONS.md`](EXCEPTIONS.md).

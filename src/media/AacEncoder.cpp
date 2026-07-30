@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -26,12 +26,12 @@
 
 #include "core/Log.h"
 
-namespace moo::media {
+namespace kloud::media {
 
 bool AacEncoder::open(int sampleRate, int bitrateBps) {
     const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
     if (!codec) {
-        MOO_LOGE("aac: no encoder in this FFmpeg");
+        KLOUD_LOGE("aac: no encoder in this FFmpeg");
         return false;
     }
     enc_ = avcodec_alloc_context3(codec);
@@ -43,7 +43,7 @@ bool AacEncoder::open(int sampleRate, int bitrateBps) {
     enc_->time_base = {1, sampleRate};
     enc_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;  // mpegts writes ADTS from this
     if (avcodec_open2(enc_, codec, nullptr) < 0) {
-        MOO_LOGE("aac: open failed");
+        KLOUD_LOGE("aac: open failed");
         close();
         return false;
     }
@@ -115,4 +115,4 @@ bool AacEncoder::drain(std::vector<AVPacket*>& out) {
     return receiveAll(out);
 }
 
-}  // namespace moo::media
+}  // namespace kloud::media

@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -33,15 +33,15 @@
 #include "ui/EngineBridge.h"
 #include "ui/MainWindow.h"
 
-using namespace moo;
-using namespace moo::ui;
+using namespace kloud;
+using namespace kloud::ui;
 
 namespace {
 
 QApplication& application() {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     static int argc = 1;
-    static char name[] = "moo-ui-tests";
+    static char name[] = "kloud-ui-tests";
     static char* argv[] = {name, nullptr};
     static auto app = std::make_unique<QApplication>(argc, argv);
     return *app;
@@ -92,25 +92,25 @@ TEST_CASE("input picker assigns and clears sources") {
         CHECK(picker->currentIndex() == 0);
 
         // Activating a (synthetic) discovery row patches the engine input.
-        picker->addItem(QStringLiteral("NDI · MooCam"),
+        picker->addItem(QStringLiteral("NDI · KloudCam"),
                         int(InputSpec::Type::Ndi));
-        picker->setItemData(picker->count() - 1, QStringLiteral("MooCam"),
+        picker->setItemData(picker->count() - 1, QStringLiteral("KloudCam"),
                             Qt::UserRole + 1);
         emit picker->activated(picker->count() - 1);
-        REQUIRE(waitFor([&] { return engine.inputRef(0) == "MooCam"; }));
+        REQUIRE(waitFor([&] { return engine.inputRef(0) == "KloudCam"; }));
         CHECK(engine.inputType(0) == InputSpec::Type::Ndi);
 
         // The bridge poll collapses the picker to the new assignment.
         REQUIRE(waitFor([&] {
             return picker->count() == 1 &&
-                   picker->currentText() == QStringLiteral("MooCam");
+                   picker->currentText() == QStringLiteral("KloudCam");
         }));
 
         // Reopening keeps the offline assignment visible and selected while
         // BLACK stays first; picking BLACK unassigns the input again.
         picker->showPopup();
         picker->hidePopup();
-        CHECK(picker->currentText() == QStringLiteral("MooCam"));
+        CHECK(picker->currentText() == QStringLiteral("KloudCam"));
         CHECK(picker->itemText(0) == QStringLiteral("BLACK"));
         emit picker->activated(0);
         REQUIRE(waitFor([&] { return engine.inputRef(0).empty(); }));

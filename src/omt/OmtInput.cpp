@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -31,7 +31,7 @@
 #include "core/MediaClock.h"
 #include "core/Stats.h"
 
-namespace moo {
+namespace kloud {
 
 OmtInput::OmtInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue, std::string ref,
                    int index, int syncFrames)
@@ -105,7 +105,7 @@ void OmtInput::run(std::stop_token st) {
                 ref_.c_str(), OMTFrameType(OMTFrameType_Video | OMTFrameType_Audio),
                 OMTPreferredVideoFormat_UYVYorUYVA, OMTReceiveFlags_None);
             if (!recv_) {
-                MOO_LOGE("in%d(omt): receive_create('%s') failed", index_,
+                KLOUD_LOGE("in%d(omt): receive_create('%s') failed", index_,
                          ref_.c_str());
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
@@ -118,7 +118,7 @@ void OmtInput::run(std::stop_token st) {
             haveSrcTs = false;
             synthK = 0;
             alphaThisConn = false;
-            MOO_LOGI("in%d(omt): connecting to '%s'", index_, ref_.c_str());
+            KLOUD_LOGI("in%d(omt): connecting to '%s'", index_, ref_.c_str());
         }
 
         if (const uint8_t want = tally_.load(std::memory_order_relaxed);
@@ -193,7 +193,7 @@ void OmtInput::run(std::stop_token st) {
         }
 
         if (!ring_ || !(ring_->desc() == d)) {
-            MOO_LOGI("in%d(omt): format %dx%d @ %d/%d%s", index_, d.width,
+            KLOUD_LOGI("in%d(omt): format %dx%d @ %d/%d%s", index_, d.width,
                      d.height, d.fpsN, d.fpsD, d.hasAlpha() ? " +alpha" : "");
             const int slots = gpu::UploadRing::kSlots +
                               (syncFrames_ >= 0 ? syncFrames_ + 2 : 0);
@@ -264,7 +264,7 @@ void OmtInput::run(std::stop_token st) {
                             if (++badCadence > 8) {
                                 ptsSynth = true;
                                 synthCtr.add();
-                                MOO_LOGW("in%d(omt): sender timestamps "
+                                KLOUD_LOGW("in%d(omt): sender timestamps "
                                          "unusable, synthesizing pts", index_);
                             }
                         } else {
@@ -295,4 +295,4 @@ void OmtInput::run(std::stop_token st) {
     }
 }
 
-}  // namespace moo
+}  // namespace kloud

@@ -11,7 +11,7 @@ Remote 8K NDI is 1–2.5 Gbps; SRT at 120 ms latency wants deep buffers.
 Defaults on Arch (4 MB rmem_max) drop bursts long before the wire is full.
 
 ```sh
-sudo cp scripts/tuning-sysctl.conf /etc/sysctl.d/90-mooswitcher.conf
+sudo cp scripts/tuning-sysctl.conf /etc/sysctl.d/90-8kloud-switcher.conf
 sudo sysctl --system
 ```
 
@@ -41,7 +41,7 @@ manages its own thread pool and reacts badly to a shrunken cpuset.
 
 Same-host NDI is compressed too (NDI 6.3.2: senders encode every frame,
 always; local receivers decode) — don't assume local hops are free. With
-worst-case content (`moo-testgen --noise`):
+worst-case content (`kloud-testgen --noise`):
 
 - 1080p: ~0.25 core encode, ~0.5 core decode, ~0.5 Gbps. Comfortable.
 - 4K (interpolated): ~1 core encode, ~2 cores decode worst-case. Fine.

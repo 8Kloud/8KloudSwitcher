@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -24,8 +24,8 @@
 
 #include "ctl/ControlProtocol.h"
 
-using moo::ctl::Request;
-using moo::ctl::parseLine;
+using kloud::ctl::Request;
+using kloud::ctl::parseLine;
 
 namespace {
 Request must(const char* line) {
@@ -184,7 +184,7 @@ TEST_CASE("control: audio") {
 }
 
 TEST_CASE("control: state JSON is stable, 1-based, and escaped") {
-    moo::ctl::Snapshot s;
+    kloud::ctl::Snapshot s;
     s.program = 0;
     s.preview = 2;
     s.transitionType = 1;
@@ -204,8 +204,8 @@ TEST_CASE("control: state JSON is stable, 1-based, and escaped") {
     s.inputs[1].media.playing = true;
     s.inputs[1].media.playlistSize = 3;
 
-    const std::string j = moo::ctl::toJson(s);
-    CHECK(j == moo::ctl::toJson(s));  // deterministic
+    const std::string j = kloud::ctl::toJson(s);
+    CHECK(j == kloud::ctl::toJson(s));  // deterministic
     CHECK(j.find("\"program\":1") != std::string::npos);
     CHECK(j.find("\"preview\":3") != std::string::npos);
     CHECK(j.find("\"transition\":\"wipelr\"") != std::string::npos);

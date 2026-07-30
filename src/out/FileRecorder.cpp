@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -28,7 +28,7 @@
 #include "core/Log.h"
 #include "core/Stats.h"
 
-namespace moo {
+namespace kloud {
 
 FileRecorder::FileRecorder(media::CudaCtx& cuda, gpu::Compositor& comp,
                            gpu::Timeline& renderTL,
@@ -49,13 +49,13 @@ FileRecorder::FileRecorder(media::CudaCtx& cuda, gpu::Compositor& comp,
     startSample_ = av_rescale_q(startTick_, encoder_->timeBase(),
                                 AVRational{1, audio::kSampleRate});
     if (withAudio && !aac_.open(audio::kSampleRate, 160'000))
-        MOO_LOGW("record: AAC encoder unavailable; recording video-only");
+        KLOUD_LOGW("record: AAC encoder unavailable; recording video-only");
 
     for (int fif = 0; fif < gpu::Compositor::kFramesInFlight; ++fif) {
         const int fd = comp_.nvPackExportFd(fif, feed_);
         if (fd < 0 ||
             !cuda_.importVkFd(fd, comp_.nvPackBytes(), imports_[fif])) {
-            MOO_LOGE("record: NV12 pack import failed (fif %d)", fif);
+            KLOUD_LOGE("record: NV12 pack import failed (fif %d)", fif);
             return;
         }
     }
@@ -66,7 +66,7 @@ FileRecorder::FileRecorder(media::CudaCtx& cuda, gpu::Compositor& comp,
     encodeThread_ =
         std::jthread([this](std::stop_token stop) { encodeLoop(stop); });
     muxThread_ = std::jthread([this](std::stop_token stop) { muxLoop(stop); });
-    MOO_LOGI("%s: started '%s'", statsPrefix_.c_str(), path_.c_str());
+    KLOUD_LOGI("%s: started '%s'", statsPrefix_.c_str(), path_.c_str());
 }
 
 FileRecorder::~FileRecorder() {
@@ -104,7 +104,7 @@ bool FileRecorder::openMux() {
     if (avformat_alloc_output_context2(&output_, nullptr, "matroska",
                                        path_.c_str()) < 0 ||
         !output_) {
-        MOO_LOGE("record: cannot create Matroska muxer for '%s'", path_.c_str());
+        KLOUD_LOGE("record: cannot create Matroska muxer for '%s'", path_.c_str());
         return false;
     }
 
@@ -127,14 +127,14 @@ bool FileRecorder::openMux() {
 
     if (!(output_->oformat->flags & AVFMT_NOFILE) &&
         avio_open(&output_->pb, path_.c_str(), AVIO_FLAG_WRITE) < 0) {
-        MOO_LOGE("record: cannot open '%s' for writing", path_.c_str());
+        KLOUD_LOGE("record: cannot open '%s' for writing", path_.c_str());
         return false;
     }
     const int headerResult = avformat_write_header(output_, nullptr);
     if (headerResult < 0) {
         char error[128];
         av_strerror(headerResult, error, sizeof error);
-        MOO_LOGE("record: Matroska header failed for '%s': %s", path_.c_str(),
+        KLOUD_LOGE("record: Matroska header failed for '%s': %s", path_.c_str(),
                  error);
         return false;
     }
@@ -146,7 +146,7 @@ void FileRecorder::closeMux() {
     if (!output_) return;
     if (output_->pb) {
         if (headerWritten_ && av_write_trailer(output_) < 0)
-            MOO_LOGW("record: trailer failed for '%s'", path_.c_str());
+            KLOUD_LOGW("record: trailer failed for '%s'", path_.c_str());
         avio_closep(&output_->pb);
     }
     avformat_free_context(output_);
@@ -246,7 +246,7 @@ void FileRecorder::muxLoop(std::stop_token stop) {
         if (result < 0) {
             failed_.store(true, std::memory_order_relaxed);
             dropped_.fetch_add(1, std::memory_order_relaxed);
-            MOO_LOGE("record: write failed (%d) for '%s'", result,
+            KLOUD_LOGE("record: write failed (%d) for '%s'", result,
                      path_.c_str());
         } else {
             written_.fetch_add(1, std::memory_order_relaxed);
@@ -254,9 +254,9 @@ void FileRecorder::muxLoop(std::stop_token stop) {
         }
     }
     closeMux();
-    MOO_LOGI("%s: stopped '%s' (%lld frames, %lld packets%s)",
+    KLOUD_LOGI("%s: stopped '%s' (%lld frames, %lld packets%s)",
              statsPrefix_.c_str(), path_.c_str(), (long long)framesEncoded(),
              (long long)packetsWritten(), failed() ? ", errors" : "");
 }
 
-}  // namespace moo
+}  // namespace kloud

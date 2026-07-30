@@ -1,4 +1,4 @@
-/* MooSwitcher — a live video switcher for Linux + NVIDIA.
+/* 8Kloud Switcher — a live video switcher for Linux + NVIDIA.
  * Copyright (c) 2026 Devin Block
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * MooSwitcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
+ * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
  * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
  * runtime, and distribute the combined work. See EXCEPTIONS.md for the
  * full exception text. */
@@ -28,7 +28,7 @@
 
 // Minimal timestamped stderr logger. Deliberately dependency-free for M0;
 // swappable later without touching call sites.
-namespace moo::log {
+namespace kloud::log {
 
 enum class Level { Debug = 0, Info, Warn, Error };
 
@@ -57,9 +57,9 @@ inline void write(Level lv, const char* fmt, ...) {
     va_end(ap);
 }
 
-}  // namespace moo::log
+}  // namespace kloud::log
 
-#define MOO_LOGD(...) ::moo::log::write(::moo::log::Level::Debug, __VA_ARGS__)
-#define MOO_LOGI(...) ::moo::log::write(::moo::log::Level::Info, __VA_ARGS__)
-#define MOO_LOGW(...) ::moo::log::write(::moo::log::Level::Warn, __VA_ARGS__)
-#define MOO_LOGE(...) ::moo::log::write(::moo::log::Level::Error, __VA_ARGS__)
+#define KLOUD_LOGD(...) ::kloud::log::write(::kloud::log::Level::Debug, __VA_ARGS__)
+#define KLOUD_LOGI(...) ::kloud::log::write(::kloud::log::Level::Info, __VA_ARGS__)
+#define KLOUD_LOGW(...) ::kloud::log::write(::kloud::log::Level::Warn, __VA_ARGS__)
+#define KLOUD_LOGE(...) ::kloud::log::write(::kloud::log::Level::Error, __VA_ARGS__)
