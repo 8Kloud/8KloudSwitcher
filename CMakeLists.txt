@@ -106,6 +106,21 @@ else()
   message(STATUS "OMT SDK not found (${OMT_SDK_DIR}) - OMT input disabled.")
 endif()
 
+# -- DeckLink: optional, headers vendored in third_party/decklink/include
+# (copied from the Blackmagic DeckLink SDK; see docs/decklink.md). There is no
+# link-time library -- DeckLinkAPIDispatch.cpp dlopens libDeckLinkAPI.so from
+# the installed Desktop Video driver at runtime.
+set(DECKLINK_SDK_DIR ${CMAKE_SOURCE_DIR}/third_party/decklink
+    CACHE PATH "DeckLink SDK root (include/ holds the SDK headers)")
+if(EXISTS ${DECKLINK_SDK_DIR}/include/DeckLinkAPI.h AND
+   EXISTS ${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp)
+  set(DECKLINK_FOUND TRUE)
+  message(STATUS "DeckLink SDK found: ${DECKLINK_SDK_DIR}")
+else()
+  set(DECKLINK_FOUND FALSE)
+  message(STATUS "DeckLink SDK not found (${DECKLINK_SDK_DIR}) - DeckLink input disabled.")
+endif()
+
 if(NDI_FOUND)
   add_library(kloud_ndi STATIC src/ndi/NdiLib.cpp)
   target_link_libraries(kloud_ndi PUBLIC kloud_core NDI::ndi)
@@ -149,6 +164,17 @@ if(NDI_FOUND)
     target_sources(kloud_engine PRIVATE src/omt/OmtInput.cpp)
     target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_OMT)
     target_link_libraries(kloud_engine PUBLIC OMT::omt)
+  endif()
+  if(DECKLINK_FOUND)
+    target_sources(kloud_engine PRIVATE
+      src/decklink/DeckLinkInput.cpp
+      ${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp)
+    target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_DECKLINK)
+    target_include_directories(kloud_engine PUBLIC ${DECKLINK_SDK_DIR}/include)
+    target_link_libraries(kloud_engine PUBLIC ${CMAKE_DL_LIBS})
+    # SDK header, not ours: it trips -Wall/-Wextra and multichar constants.
+    set_source_files_properties(${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp
+      PROPERTIES COMPILE_OPTIONS "-w")
   endif()
 
   set(_kloud_rpath ${_ndi_libdir})
@@ -212,6 +238,7 @@ if(KLOUD_BUILD_TESTS)
     tests/audio_test.cpp
     tests/aac_test.cpp
     tests/control_protocol_test.cpp
+    tests/decklink_ref_test.cpp
     tests/media_playlist_test.cpp
     tests/gpu_composite_test.cpp
     tests/interop_test.cpp

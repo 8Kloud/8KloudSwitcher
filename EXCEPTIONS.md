@@ -19,7 +19,9 @@ libraries and their SDK headers:
   - the NDI(R) SDK (NewTek / Vizrt NDI AB);
   - the NVIDIA CUDA Toolkit, the NVIDIA Video Codec SDK, and the NVIDIA
     driver runtime libraries (including libcuda, NVENC, and NVDEC);
-  - the Open Media Transport runtime libraries (libomt and libvmx).
+  - the Open Media Transport runtime libraries (libomt and libvmx);
+  - the Blackmagic Design DeckLink SDK and the Desktop Video runtime
+    libraries (including libDeckLinkAPI).
 
 You must comply with the GNU General Public License version 3 in all
 respects for all of the 8Kloud Switcher code used other than linking against the

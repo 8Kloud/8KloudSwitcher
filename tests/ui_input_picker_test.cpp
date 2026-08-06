@@ -16,9 +16,9 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -118,6 +118,49 @@ TEST_CASE("input picker assigns and clears sources") {
 
     // Replaced inputs are destroyed on detached threads; give them time to
     // finish before process teardown tears the runtime out from under them.
+    QThread::msleep(400);
+    engine.stop();
+}
+
+TEST_CASE("input picker assigns a DeckLink source") {
+    (void)application();
+
+    Engine engine;
+    EngineConfig cfg;
+    cfg.ndiOut = false;
+    cfg.audio = false;
+    cfg.inputs = {{InputSpec::Type::Ndi, ""}};
+    REQUIRE(engine.start(cfg));
+
+    {
+        EngineBridge bridge(engine);
+        MainWindow window(bridge, {QString()});
+
+        const auto pickers =
+            window.findChildren<QComboBox*>(QStringLiteral("inputPicker"));
+        REQUIRE(pickers.size() == 1);
+        QComboBox* picker = pickers[0];
+
+        // A decklink:// row carries the DeckLink type explicitly; the ref is
+        // what reaches the engine. Synthetic so the test does not need a card.
+        picker->showPopup();
+        picker->hidePopup();
+        picker->addItem(QStringLiteral("SDI · DeckLink 8K Pro (1)"),
+                        int(InputSpec::Type::DeckLink));
+        picker->setItemData(picker->count() - 1,
+                            QStringLiteral("decklink://0"), Qt::UserRole + 1);
+        emit picker->activated(picker->count() - 1);
+
+        REQUIRE(waitFor([&] { return engine.inputRef(0) == "decklink://0"; }));
+        CHECK(engine.inputType(0) == InputSpec::Type::DeckLink);
+
+        // Collapsed label uses the SDI prefix, not the raw URL.
+        REQUIRE(waitFor([&] {
+            return picker->count() == 1 &&
+                   picker->currentText() == QStringLiteral("SDI · 0");
+        }));
+    }
+
     QThread::msleep(400);
     engine.stop();
 }

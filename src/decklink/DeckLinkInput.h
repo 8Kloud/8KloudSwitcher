@@ -23,30 +23,40 @@
 #pragma once
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "core/Spsc.h"
+#include "decklink/DeckLinkRef.h"
 #include "engine/IInputSource.h"
 #include "gpu/UploadRing.h"
-#include "ndi/NdiFinder.h"
-#include "ndi/NdiLib.h"
+
+class IDeckLink;
+class IDeckLinkInput;
+class IDeckLinkVideoInputFrame;
+class IDeckLinkAudioInputPacket;
 
 namespace kloud {
 
-// One NDI input: capture thread doing recv_capture_v3 (UYVY fastest path),
-// one memcpy into pinned staging, upload submit on the transfer queue, and a
-// latest-frame mailbox publish. Handles source (re)connect by name substring
-// and mid-show format changes (new UploadRing; the old one dies with its
-// last published frame).
-class NdiReceiver : public IInputSource {
+// One DeckLink SDI input, capturing 8-bit YUV (bmdFormat8BitYUV) -- which is
+// UYVY 4:2:2, byte-identical to our native PixFmt::UYVY8_422, so frames go
+// straight into the upload ring with no conversion.
+//
+// Unlike the network inputs there is no capture thread of our own: the SDK
+// delivers frames on its own callback thread and we do the staging copy +
+// upload submit there, exactly the work NdiReceiver/OmtInput do on theirs. An
+// open thread runs only to (re)open the device when it is absent or busy.
+//
+// Frame sync gets a real hardware clock here: GetHardwareReferenceTimestamp is
+// the card's own reference, so pts is never synthesized (senderClock = true).
+class DeckLinkInput : public IInputSource {
 public:
-    // syncFrames >= 0 enables the frame-sync feed (and sizes the upload
-    // ring for that many queued frames); -1 = plain latest-frame input.
-    NdiReceiver(gpu::VkEngine& eng, gpu::Queue& uploadQueue, NdiFinder& finder,
-                std::string matchName, int index, int syncFrames = -1);
-    ~NdiReceiver() override;
+    // ref: see DeckLinkRef.h. syncFrames >= 0 enables the frame-sync feed.
+    DeckLinkInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue, std::string ref,
+                  int index, int syncFrames = -1);
+    ~DeckLinkInput() override;
 
     std::optional<Mailbox::Item> newer(uint64_t lastSeq) const override {
         return mailbox_.takeNewer(lastSeq);
@@ -56,14 +66,7 @@ public:
     }
 
     Status status() const override;
-    const std::string& matchName() const { return match_; }
-
-    // Tally toward the source; applied on the capture thread (and re-applied
-    // after reconnects).
-    void setTally(bool onProgram, bool onPreview) override {
-        tally_.store(uint8_t(onProgram | (onPreview << 1)),
-                     std::memory_order_relaxed);
-    }
+    const std::string& ref() const { return ref_; }
 
     void attachAudioSink(audio::InputChannel* ch) override {
         audioSink_.store(ch, std::memory_order_release);
@@ -71,31 +74,51 @@ public:
 
     SyncFeed* syncFeed() override { return syncFrames_ >= 0 ? &feed_ : nullptr; }
 
+    // Device display names, in SDK enumeration order (index = position). Empty
+    // when no driver/card is present. Safe to call without an instance.
+    static std::vector<std::string> devices();
+
+    // Called by the SDK callback shim; public only for that.
+    void onFrame(IDeckLinkVideoInputFrame* video, IDeckLinkAudioInputPacket* audio);
+    void onFormatChanged(unsigned events, void* newMode, unsigned flags);
+
 private:
     void run(std::stop_token st);
+    bool open();          // open thread only
+    void close();         // open thread / dtor only
+    void startStreams(void* displayMode, bool applyMode);
 
     gpu::VkEngine& eng_;
     gpu::Queue& queue_;
-    NdiFinder& finder_;
-    std::string match_;       // lowercase substring
-    std::string displayName_;
+    std::string ref_;
+    const DeckLinkRef parsed_;
     int index_;
 
-    NDIlib_recv_instance_t recv_ = nullptr;
+    IDeckLink* device_ = nullptr;
+    IDeckLinkInput* input_ = nullptr;
+    class Delegate;
+    Delegate* delegate_ = nullptr;
+
+    // Open-thread owned; keeps the retry loop from spamming the log.
+    int64_t lastEnableLogNs_ = 0;
+    bool everLoggedOpen_ = false;
+
+    // Callback-thread owned.
     std::shared_ptr<gpu::UploadRing> ring_;
-    // Sticky-UYVA ring: slots whose staging alpha is already 0xFF (capture
-    // thread only; sized/reset on ring rebuild).
-    std::vector<uint8_t> slotAlphaOpaque_;
+    int64_t fpsN_ = 60000, fpsD_ = 1001;
+    uint64_t pubSeq_ = 0;
+
     Mailbox mailbox_;
     const int syncFrames_;
     SyncFeed feed_{16};
     std::atomic<audio::InputChannel*> audioSink_{nullptr};
+    std::vector<float> audioL_, audioR_;  // callback-thread scratch
 
     std::atomic<bool> connected_{false};
+    std::atomic<bool> streaming_{false};
     std::atomic<int64_t> frames_{0};
     std::atomic<int64_t> drops_{0};
-    std::atomic<uint8_t> tally_{0};      // bit0 = program, bit1 = preview
-    uint8_t appliedTally_ = 0xFF;        // capture-thread local
+    std::atomic<int64_t> lastFrameNs_{0};
     mutable std::mutex descM_;
     VideoFormatDesc desc_{};
 

@@ -44,8 +44,10 @@ The show (inputs, outputs, transition, program/preview, full mixer state) persis
 override what they name. Click an input's name in the mixer to pick a different source live —
 the browser lists NDI and OMT discovery together (Open Media Transport ingest is optional,
 8K-capable for realistic content: build steps `docs/omt.md`, measurements `docs/bench-omt.md`;
-headless `--omt-input`), and the manual field takes an `srt://` or `omt://` URL or an NDI
-name substring. The same dialog sets the input's frame sync (Off / Trim only /
+headless `--omt-input`), lists any Blackmagic **DeckLink** cards as `SDI ·` entries
+(8-bit UYVY capture up to 8K, auto-detecting the incoming mode: `docs/decklink.md`;
+headless `--decklink-input 0`), and the manual field takes an `srt://`, `omt://` or
+`decklink://` URL or an NDI name substring. The same dialog sets the input's frame sync (Off / Trim only /
 1–4 frames; headless: `--framesync IDX[:FRAMES]`). Use 1 frame for free-running cameras
 you switch between often (constant A/V at +1 frame latency); Trim only suits audio-early
 sources like SRT loopbacks. Shortcuts: `Space` cut, `Enter` auto, `F` FTB, `1–9` program,
@@ -186,8 +188,8 @@ Copyright © 2026 Devin Block.
 (GPL-3.0-or-later) — see [`LICENSE.md`](LICENSE.md). As an additional permission
 under GPLv3 section 7, 8Kloud Switcher may be linked against and distributed with the
 proprietary **NDI SDK**, the **NVIDIA CUDA / Video Codec SDK** runtime (CUDA,
-NVENC, NVDEC), and the **OMT** (libomt / libvmx) runtime; the full exception text
-is in [`EXCEPTIONS.md`](EXCEPTIONS.md).
+NVENC, NVDEC), the **OMT** (libomt / libvmx) runtime, and the **Blackmagic DeckLink
+SDK**; the full exception text is in [`EXCEPTIONS.md`](EXCEPTIONS.md).
 
 ---
 NDI® is a registered trademark of Vizrt NDI AB. The standard NDI SDK is royalty-free

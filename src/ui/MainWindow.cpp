@@ -16,9 +16,9 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 #include "ui/MainWindow.h"
 
@@ -637,6 +637,8 @@ QString displayName(QString ref) {
         ref = QStringLiteral("SRT · ") + ref.mid(6);
     else if (ref.startsWith(QStringLiteral("omt://"), Qt::CaseInsensitive))
         ref = QStringLiteral("OMT · ") + ref.mid(6);
+    else if (ref.startsWith(QStringLiteral("decklink://"), Qt::CaseInsensitive))
+        ref = QStringLiteral("SDI · ") + ref.mid(11);
     else if (QFileInfo(ref).isAbsolute())
         ref = (media::isStillImagePath(ref.toStdString())
                    ? QStringLiteral("STILL · ")
@@ -1140,6 +1142,10 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
             for (const QString& name : bridge_.omtSourceNames())
                 add(QStringLiteral("OMT · ") + name,
                     int(InputSpec::Type::Omt), name);
+            // SDI: the label is the card's own name, the ref is decklink://N.
+            for (const auto& [label, ref] : bridge_.decklinkSources())
+                add(QStringLiteral("SDI · ") + label,
+                    int(InputSpec::Type::DeckLink), ref);
             add(QStringLiteral("SRT URL…"), kPickSrt, {});
             int row = 0;  // BLACK
             if (!current.isEmpty()) {

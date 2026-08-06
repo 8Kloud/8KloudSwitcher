@@ -16,9 +16,9 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 #include "ui/ShowFile.h"
 
@@ -107,6 +107,8 @@ bool ShowFile::load(State& st) const {
         const QString type = s.value("type").toString();
         spec.type = type == QStringLiteral("srt")   ? InputSpec::Type::Srt
                     : type == QStringLiteral("omt") ? InputSpec::Type::Omt
+                    : type == QStringLiteral("decklink")
+                        ? InputSpec::Type::DeckLink
                     : type == QStringLiteral("media")
                         ? InputSpec::Type::Media
                     : type == QStringLiteral("still")
@@ -212,6 +214,8 @@ void ShowFile::save(const State& st) const {
             "type",
             spec.type == InputSpec::Type::Srt     ? QStringLiteral("srt")
             : spec.type == InputSpec::Type::Omt   ? QStringLiteral("omt")
+            : spec.type == InputSpec::Type::DeckLink
+                ? QStringLiteral("decklink")
             : spec.type == InputSpec::Type::Media ? QStringLiteral("media")
             : spec.type == InputSpec::Type::Still ? QStringLiteral("still")
                                                   : QStringLiteral("ndi"));

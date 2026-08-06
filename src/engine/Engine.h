@@ -16,9 +16,9 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 #pragma once
 #include <array>
@@ -54,8 +54,9 @@ class FileRecorder;
 class SrtOutput;
 
 struct InputSpec {
-    enum class Type { Ndi, Srt, Omt, Media, Still } type = Type::Ndi;
-    std::string ref;  // NDI name, SRT/OMT URL, local video, or still image
+    enum class Type { Ndi, Srt, Omt, Media, Still, DeckLink } type = Type::Ndi;
+    // NDI name, SRT/OMT URL, decklink:// ref, local video, or still image
+    std::string ref;
     // Frame sync (docs/design-framesync.md): -1 = off (v1 latest-frame
     // behavior), 0 = measure-only (auto A/V trim, no added latency),
     // 1..4 = buffered re-timing by that many source frames.
@@ -123,6 +124,9 @@ public:
     // OMT discovery snapshot (names in "HOST (Name)" form). Empty when built
     // without OMT. First call may return empty until mDNS answers arrive.
     std::vector<std::string> omtSources() const;
+    // DeckLink device display names, in SDK order (index = decklink://N).
+    // Empty when built without the SDK or when no card/driver is present.
+    std::vector<std::string> decklinkSources() const;
     std::string inputRef(int i) const;  // current source ref (UI labels)
     InputSpec::Type inputType(int i) const;
     int inputSyncFrames(int i) const;   // current frame-sync setting (-1 off)

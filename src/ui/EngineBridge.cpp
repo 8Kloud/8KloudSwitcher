@@ -16,15 +16,16 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 #include "ui/EngineBridge.h"
 
 #include <QFileInfo>
 
 #include "core/Stats.h"
+#include "decklink/DeckLinkRef.h"
 #include "media/StillImage.h"
 
 namespace kloud::ui {
@@ -96,9 +97,11 @@ void EngineBridge::replaceInput(int input, QString ref, int syncFrames,
                                 int type) {
     const std::string r = ref.toStdString();
     const auto t =
-        type >= 0 && type <= 4 ? InputSpec::Type(type)
+        type >= 0 && type <= int(InputSpec::Type::DeckLink)
+            ? InputSpec::Type(type)
         : r.rfind("srt://", 0) == 0   ? InputSpec::Type::Srt
         : r.rfind("omt://", 0) == 0   ? InputSpec::Type::Omt
+        : isDeckLinkRef(r)            ? InputSpec::Type::DeckLink
         : QFileInfo(ref).isFile()
             ? (media::isStillImagePath(r) ? InputSpec::Type::Still
                                           : InputSpec::Type::Media)
@@ -152,6 +155,15 @@ QStringList EngineBridge::omtSourceNames() const {
     QStringList out;
     for (const auto& s : engine_.omtSources())
         out << QString::fromStdString(s);
+    return out;
+}
+
+QList<QPair<QString, QString>> EngineBridge::decklinkSources() const {
+    QList<QPair<QString, QString>> out;
+    const auto names = engine_.decklinkSources();
+    for (int i = 0; i < int(names.size()); ++i)
+        out.append({QString::fromStdString(names[size_t(i)]),
+                    QStringLiteral("decklink://%1").arg(i)});
     return out;
 }
 

@@ -16,9 +16,9 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 #include "engine/Engine.h"
 
@@ -39,6 +39,10 @@
 #include <libomt.h>
 
 #include "omt/OmtInput.h"
+#endif
+
+#ifdef KLOUD_HAVE_DECKLINK
+#include "decklink/DeckLinkInput.h"
 #endif
 
 namespace kloud {
@@ -91,6 +95,14 @@ std::vector<std::string> Engine::omtSources() const {
         if (addrs[i]) out.emplace_back(addrs[i]);
 #endif
     return out;
+}
+
+std::vector<std::string> Engine::decklinkSources() const {
+#ifdef KLOUD_HAVE_DECKLINK
+    return DeckLinkInput::devices();
+#else
+    return {};
+#endif
 }
 
 std::string Engine::inputRef(int i) const {
@@ -270,6 +282,18 @@ bool Engine::start(const EngineConfig& cfg) {
         {
             KLOUD_LOGE("in%d: OMT input requested but built without OMT SDK; "
                      "input will stay dark", int(i));
+            inputs_.push_back(std::make_unique<NdiReceiver>(
+                vk_, q, *finder_, spec.ref, int(i), spec.syncFrames));
+        }
+#endif
+        else if (spec.type == InputSpec::Type::DeckLink)
+#ifdef KLOUD_HAVE_DECKLINK
+            inputs_.push_back(std::make_unique<DeckLinkInput>(
+                vk_, q, spec.ref, int(i), spec.syncFrames));
+#else
+        {
+            KLOUD_LOGE("in%d: DeckLink input requested but built without the "
+                     "DeckLink SDK; input will stay dark", int(i));
             inputs_.push_back(std::make_unique<NdiReceiver>(
                 vk_, q, *finder_, spec.ref, int(i), spec.syncFrames));
         }
@@ -685,6 +709,11 @@ void Engine::renderLoop(std::stop_token st) {
 #ifdef KLOUD_HAVE_OMT
                 else if (spec.type == InputSpec::Type::Omt)
                     inputs_[size_t(idx)] = std::make_unique<OmtInput>(
+                        vk_, q, spec.ref, idx, spec.syncFrames);
+#endif
+#ifdef KLOUD_HAVE_DECKLINK
+                else if (spec.type == InputSpec::Type::DeckLink)
+                    inputs_[size_t(idx)] = std::make_unique<DeckLinkInput>(
                         vk_, q, spec.ref, idx, spec.syncFrames);
 #endif
                 else

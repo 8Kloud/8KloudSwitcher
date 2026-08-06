@@ -16,9 +16,9 @@
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
  * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), and the OMT (libomt / libvmx)
- * runtime, and distribute the combined work. See EXCEPTIONS.md for the
- * full exception text. */
+ * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
+ * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
+ * work. See EXCEPTIONS.md for the full exception text. */
 
 // kloud-headless: runs the switcher engine without a GUI. Verification driver
 // for M1: connects NDI inputs, renders the multiview, dumps PPM frames,
@@ -97,6 +97,15 @@ int main(int argc, char** argv) {
         } else if (a == "--omt-input") {
             if (const char* v = next()) {
                 cfg.inputs.push_back({kloud::InputSpec::Type::Omt, v});
+                lastMediaInput = -1;
+            }
+        } else if (a == "--decklink-input") {
+            // Accepts a bare index ("0") for convenience as well as a full
+            // decklink:// ref.
+            if (const char* v = next()) {
+                std::string ref = v;
+                if (ref.rfind("decklink://", 0) != 0) ref = "decklink://" + ref;
+                cfg.inputs.push_back({kloud::InputSpec::Type::DeckLink, ref});
                 lastMediaInput = -1;
             }
         } else if (a == "--media-input") {
@@ -268,6 +277,7 @@ int main(int argc, char** argv) {
             fprintf(stderr,
                     "usage: kloud-headless --input NAME [--input NAME ...] "
                     "[--srt-input URL] [--omt-input NAME_OR_URL] "
+                    "[--decklink-input INDEX|decklink://REF] "
                     "[--still-input PATH] "
                     "[--media-input PATH [--media-trim IN_MS[:OUT_MS]] "
                     "[--media-speed RATE] [--media-item PATH "
