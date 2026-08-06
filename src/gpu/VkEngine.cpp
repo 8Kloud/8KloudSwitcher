@@ -42,6 +42,24 @@ bool Timeline::waitCompleted(uint64_t value, uint64_t timeoutNs) const {
     return vkWaitSemaphores(dev_, &wi, timeoutNs) == VK_SUCCESS;
 }
 
+namespace {
+
+VKAPI_ATTR VkBool32 VKAPI_CALL
+debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+              VkDebugUtilsMessageTypeFlagsEXT,
+              const VkDebugUtilsMessengerCallbackDataEXT* data, void*) {
+    const char* msg = data && data->pMessage ? data->pMessage : "(no message)";
+    if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        KLOUD_LOGE("vk: %s", msg);
+    else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        KLOUD_LOGW("vk: %s", msg);
+    else
+        KLOUD_LOGI("vk: %s", msg);
+    return VK_FALSE;
+}
+
+}  // namespace
+
 bool VkEngine::init(bool enableValidation) {
     // -- instance --
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -63,13 +81,41 @@ bool VkEngine::init(bool enableValidation) {
             KLOUD_LOGW("validation requested but VK_LAYER_KHRONOS_validation not present");
     }
 
+    // The validation layer reports nothing on its own — messages only reach us
+    // through a debug-utils messenger, so enable the extension alongside it.
+    std::vector<const char*> instExts;
+    if (validation_) instExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+    VkDebugUtilsMessengerCreateInfoEXT dbg{
+        VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    dbg.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                          VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    dbg.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                      VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    dbg.pfnUserCallback = debugCallback;
+
     VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     ici.pApplicationInfo = &app;
     ici.enabledLayerCount = uint32_t(layers.size());
     ici.ppEnabledLayerNames = layers.data();
+    ici.enabledExtensionCount = uint32_t(instExts.size());
+    ici.ppEnabledExtensionNames = instExts.data();
+    // Catches messages raised during instance creation/teardown too.
+    if (validation_) ici.pNext = &dbg;
     if (vkCreateInstance(&ici, nullptr, &inst_) != VK_SUCCESS) {
         KLOUD_LOGE("vkCreateInstance failed");
         return false;
+    }
+
+    if (validation_) {
+        auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(inst_, "vkCreateDebugUtilsMessengerEXT"));
+        if (!create ||
+            create(inst_, &dbg, nullptr, &debugMessenger_) != VK_SUCCESS) {
+            debugMessenger_ = VK_NULL_HANDLE;
+            KLOUD_LOGW("validation: debug messenger unavailable");
+        }
     }
 
     // -- physical device: prefer a discrete GPU --
@@ -213,15 +259,27 @@ bool VkEngine::init(bool enableValidation) {
     return true;
 }
 
+void VkEngine::destroyDebugMessenger() {
+    if (!debugMessenger_) return;
+    auto destroyFn = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(inst_, "vkDestroyDebugUtilsMessengerEXT"));
+    if (destroyFn) destroyFn(inst_, debugMessenger_, nullptr);
+    debugMessenger_ = VK_NULL_HANDLE;
+}
+
 void VkEngine::destroy() {
     if (!dev_) {
-        if (inst_) vkDestroyInstance(inst_, nullptr), inst_ = VK_NULL_HANDLE;
+        if (inst_) {
+            destroyDebugMessenger();
+            vkDestroyInstance(inst_, nullptr), inst_ = VK_NULL_HANDLE;
+        }
         return;
     }
     vkDeviceWaitIdle(dev_);
     if (sampler_) vkDestroySampler(dev_, sampler_, nullptr), sampler_ = VK_NULL_HANDLE;
     vkDestroyDevice(dev_, nullptr);
     dev_ = VK_NULL_HANDLE;
+    destroyDebugMessenger();
     vkDestroyInstance(inst_, nullptr);
     inst_ = VK_NULL_HANDLE;
 }

@@ -149,6 +149,19 @@ NDI discovery needs `avahi-daemon` running.
 ./scripts/bench_speedhq.sh 7680x4320 30 build
 ```
 
+## Vulkan validation
+
+`--validate` (both binaries) loads `VK_LAYER_KHRONOS_validation` and installs a
+debug-utils messenger, so layer warnings and errors come out through the normal
+log as `vk: …`. Without the messenger the layer stays silent, so a clean run is
+only meaningful with this flag's plumbing in place — sanity-check the pipe with
+`VK_KHRONOS_VALIDATION_VALIDATE_BEST_PRACTICES=true`, which should produce
+sub-allocation advice on any run.
+
+```sh
+./build/kloud-headless --validate --autos --duration 25 --dsk 0:1
+```
+
 ## Remote control
 
 A TCP control port (GUI default 9923) accepts plain-text commands and

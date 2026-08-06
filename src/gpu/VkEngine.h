@@ -145,7 +145,10 @@ public:
     const uint8_t* deviceUuid() const { return deviceUuid_; }
 
 private:
+    void destroyDebugMessenger();
+
     VkInstance inst_ = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE;
     VkPhysicalDevice phys_ = VK_NULL_HANDLE;
     VkDevice dev_ = VK_NULL_HANDLE;
     VkPhysicalDeviceMemoryProperties memProps_{};
