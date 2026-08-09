@@ -315,6 +315,18 @@ void appendRecord(std::string& out, const char* key,
     out += ",\"path\":\"" + jsonEscape(r.path) + "\"}";
 }
 
+void appendOutput(std::string& out, const char* key,
+                  const OutputControlState& o) {
+    out += '"';
+    out += key;
+    out += "\":{";
+    appendBool(out, "configured", o.configured);
+    out += ',';
+    appendBool(out, "up", o.up);
+    out += ",\"name\":\"" + jsonEscape(o.name) + "\"";
+    out += ",\"frames\":" + std::to_string(o.frames) + "}";
+}
+
 }  // namespace
 
 std::string toJson(const Snapshot& s) {
@@ -355,6 +367,14 @@ std::string toJson(const Snapshot& s) {
     appendRecord(out, "record", s.record);
     out += ',';
     appendRecord(out, "cleanRecord", s.cleanRecord);
+    out += ',';
+    appendOutput(out, "omtOut", s.omtOut);
+    out += ',';
+    appendOutput(out, "cleanOmtOut", s.cleanOmtOut);
+    out += ',';
+    appendOutput(out, "sdiOut", s.sdiOut);
+    out += ',';
+    appendOutput(out, "cleanSdiOut", s.cleanSdiOut);
     out += ",\"srt\":{";
     appendBool(out, "configured", s.srtConfigured);
     out += ',';
@@ -368,7 +388,7 @@ std::string toJson(const Snapshot& s) {
         if (i) out += ',';
         out += "{\"n\":" + std::to_string(i + 1);
         out += ",\"ref\":\"" + jsonEscape(in.ref) + "\"";
-        out += ",\"type\":" + std::to_string(in.type);
+        out += ",\"type\":\"" + jsonEscape(in.type) + "\"";
         out += ',';
         appendBool(out, "connected", in.connected);
         if (in.media.available) {

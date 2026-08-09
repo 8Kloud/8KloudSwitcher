@@ -1,6 +1,6 @@
 {
 	"name": "8kloud-switcher",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"main": "src/main.js",
 	"scripts": {
 		"package": "companion-module-build"

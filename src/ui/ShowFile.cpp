@@ -114,18 +114,12 @@ bool ShowFile::load(State& st) const {
     for (int i = 0; i < n; ++i) {
         s.setArrayIndex(i);
         InputSpec spec;
+        // Shared with the remote-control state so the two names cannot drift.
         // Unknown types (notably "ndi" from a pre-OMT show) fall through to
         // OMT: the ref will not resolve, so the input stays black until the
         // operator re-patches it.
-        const QString type = s.value("type").toString();
-        spec.type = type == QStringLiteral("srt") ? InputSpec::Type::Srt
-                    : type == QStringLiteral("decklink")
-                        ? InputSpec::Type::DeckLink
-                    : type == QStringLiteral("media")
-                        ? InputSpec::Type::Media
-                    : type == QStringLiteral("still")
-                        ? InputSpec::Type::Still
-                                                  : InputSpec::Type::Omt;
+        spec.type = inputTypeFromName(
+            s.value("type").toString().toStdString());
         spec.ref = s.value("ref").toString().toStdString();
         // Absent in v1 show files -> stays off (-1).
         spec.syncFrames = s.value("framesync", spec.syncFrames).toInt();
@@ -224,14 +218,7 @@ void ShowFile::save(const State& st) const {
     for (int i = 0; i < int(st.cfg.inputs.size()); ++i) {
         s.setArrayIndex(i);
         const auto& spec = st.cfg.inputs[size_t(i)];
-        s.setValue(
-            "type",
-            spec.type == InputSpec::Type::Srt ? QStringLiteral("srt")
-            : spec.type == InputSpec::Type::DeckLink
-                ? QStringLiteral("decklink")
-            : spec.type == InputSpec::Type::Media ? QStringLiteral("media")
-            : spec.type == InputSpec::Type::Still ? QStringLiteral("still")
-                                                  : QStringLiteral("omt"));
+        s.setValue("type", QString::fromLatin1(inputTypeName(spec.type)));
         s.setValue("ref", QString::fromStdString(spec.ref));
         s.setValue("framesync", spec.syncFrames);
         if (spec.type == InputSpec::Type::Media) {

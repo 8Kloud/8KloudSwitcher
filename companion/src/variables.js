@@ -26,6 +26,9 @@ function getVariableDefinitions(self) {
 		{ variableId: 'clean_record_state', name: 'Clean record state' },
 		{ variableId: 'clean_record_time', name: 'Clean record time (hh:mm:ss)' },
 		{ variableId: 'srt_state', name: 'SRT output state' },
+		{ variableId: 'omt_out_state', name: 'OMT program output state' },
+		{ variableId: 'sdi_out_state', name: 'SDI program output state' },
+		{ variableId: 'sdi_out_name', name: 'SDI program output device' },
 	]
 	for (let n = 1; n <= self.inputCount(); ++n) {
 		defs.push({ variableId: `input_${n}_name`, name: `Input ${n} name` })
@@ -35,6 +38,8 @@ function getVariableDefinitions(self) {
 
 function getVariableValues(self) {
 	const s = self.state
+	// An output the show never asked for is 'off', not a fault.
+	const outState = (o) => (!o || !o.configured ? 'off' : o.up ? 'up' : 'down')
 	const recState = (r) => (!r ? 'unknown' : r.error ? 'error' : r.active ? 'recording' : r.pending ? 'starting' : 'idle')
 	const values = {
 		program: s ? s.program : 0,
@@ -47,6 +52,9 @@ function getVariableValues(self) {
 		clean_record_state: recState(s && s.cleanRecord),
 		clean_record_time: s ? recTime(s.cleanRecord, s.fps) : '--:--:--',
 		srt_state: !s || !s.srt.configured ? 'off' : s.srt.connected ? 'connected' : 'listening',
+		omt_out_state: outState(s && s.omtOut),
+		sdi_out_state: outState(s && s.sdiOut),
+		sdi_out_name: s && s.sdiOut ? s.sdiOut.name : '',
 	}
 	for (let n = 1; n <= self.inputCount(); ++n) {
 		values[`input_${n}_name`] = inputName(s, n)

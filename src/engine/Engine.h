@@ -36,6 +36,7 @@
 #include "core/Spsc.h"
 #include "engine/Commands.h"
 #include "engine/IInputSource.h"
+#include "engine/InputSpec.h"
 #include "engine/SwitcherCore.h"
 #include "gpu/Compositor.h"
 #include "gpu/UploadRing.h"
@@ -51,25 +52,6 @@ class OmtOutput;
 class DeckLinkOutput;
 class FileRecorder;
 class SrtOutput;
-
-struct InputSpec {
-    enum class Type { Omt, Srt, Media, Still, DeckLink } type = Type::Omt;
-    // OMT discovery name or omt:// URL, SRT URL, decklink:// ref, local
-    // video, or still image
-    std::string ref;
-    // Frame sync (docs/design-framesync.md): -1 = off (v1 latest-frame
-    // behavior), 0 = measure-only (auto A/V trim, no added latency),
-    // 1..4 = buffered re-timing by that many source frames.
-    int syncFrames = -1;
-    bool mediaPlaying = true;
-    bool mediaLoop = true;
-    // Ordered local clips. Empty means the legacy/single-clip `ref`.
-    std::vector<media::PlaylistItem> mediaPlaylist;
-
-    InputSpec() = default;
-    InputSpec(Type inputType, std::string inputRef, int frames = -1)
-        : type(inputType), ref(std::move(inputRef)), syncFrames(frames) {}
-};
 
 struct EngineConfig {
     VideoFormatDesc show{1920, 1080, 60000, 1001};
@@ -187,7 +169,22 @@ public:
     int64_t cleanOmtOutFrames() const;
     int64_t sdiOutFrames() const;
     int64_t cleanSdiOutFrames() const;
+
+    // Output status for the GUI and remote-control surfaces. The names are
+    // fixed by start(); the flags are live. An OMT sender either came up with
+    // the engine or not at all, so its pointer is its health; the SDI senders
+    // open asynchronously and can lose the card later, so they report their
+    // own.
+    bool omtOutActive() const { return omtOut_ != nullptr; }
+    bool cleanOmtOutActive() const { return cleanOmtOut_ != nullptr; }
     bool sdiOutOk() const;
+    bool cleanSdiOutOk() const;
+    bool omtOutRequested() const { return cfg_.omtOut; }
+    bool cleanOmtOutRequested() const { return cfg_.cleanOmtOut; }
+    const std::string& omtOutName() const { return cfg_.omtOutName; }
+    const std::string& cleanOmtOutName() const { return cfg_.cleanOmtOutName; }
+    const std::string& sdiOutRef() const { return cfg_.sdiOutRef; }
+    const std::string& cleanSdiOutRef() const { return cfg_.cleanSdiOutRef; }
     int64_t srtFramesEncoded() const;
     bool srtConnected() const;
     bool srtConfigured() const { return srtOut_ != nullptr; }

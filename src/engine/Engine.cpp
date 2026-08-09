@@ -86,6 +86,9 @@ int64_t Engine::cleanSdiOutFrames() const {
     return cleanSdiOut_ ? cleanSdiOut_->framesSent() : 0;
 }
 bool Engine::sdiOutOk() const { return sdiOut_ && sdiOut_->ok(); }
+bool Engine::cleanSdiOutOk() const {
+    return cleanSdiOut_ && cleanSdiOut_->ok();
+}
 int64_t Engine::srtFramesEncoded() const {
     return srtOut_ ? srtOut_->framesEncoded() : 0;
 }

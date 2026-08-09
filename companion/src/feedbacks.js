@@ -115,6 +115,37 @@ module.exports = function getFeedbacks(self) {
 			options: [],
 			callback: () => self.state !== null && self.state.srt.connected,
 		},
+		output_down: {
+			type: 'boolean',
+			name: 'A configured program output is down',
+			description:
+				'Lights when an output the show asked for is not running: an OMT sender that ' +
+				'failed to start, or an SDI sub-device that is missing, already capturing, or ' +
+				'cannot do the show format.',
+			defaultStyle: { bgcolor: RED, color: WHITE },
+			options: [
+				{
+					type: 'dropdown',
+					id: 'out',
+					label: 'Output',
+					default: 'any',
+					choices: [
+						{ id: 'any', label: 'Any configured output' },
+						{ id: 'omtOut', label: 'OMT program' },
+						{ id: 'cleanOmtOut', label: 'OMT clean' },
+						{ id: 'sdiOut', label: 'SDI program' },
+						{ id: 'cleanSdiOut', label: 'SDI clean' },
+					],
+				},
+			],
+			callback: (fb) => {
+				const s = self.state
+				if (!s) return false
+				const down = (k) => s[k] && s[k].configured && !s[k].up
+				if (fb.options.out !== 'any') return down(fb.options.out)
+				return ['omtOut', 'cleanOmtOut', 'sdiOut', 'cleanSdiOut'].some(down)
+			},
+		},
 		input_down: {
 			type: 'boolean',
 			name: 'Assigned input has no signal',

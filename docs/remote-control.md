@@ -15,10 +15,10 @@ is dropped.
 The bundled module lives in `companion/`. Build it once:
 
 ```sh
-cd companion && npm install && npm run package   # -> 8kloud-switcher-1.0.0.tgz
+cd companion && npm install && npm run package   # -> 8kloud-switcher-1.1.0.tgz
 ```
 
-- **Companion 4.x**: import `8kloud-switcher-1.0.0.tgz` under
+- **Companion 4.x**: import `8kloud-switcher-1.1.0.tgz` under
   Modules → Import module package.
 - **Companion 3.x**: extract the tgz and point the launcher's *Developer
   modules path* at a directory containing the extracted `pkg/` folder
@@ -28,8 +28,8 @@ cd companion && npm install && npm run package   # -> 8kloud-switcher-1.0.0.tgz
 
 Add the connection with the switcher's IP and port. The module provides
 actions (buses, transitions, DSK, media, record, audio), tally feedbacks
-(program red / preview green, DSK, FTB, recording, SRT, signal-loss,
-mute), variables (`$(8kloud-switcher:program_name)`, `record_time`,
+(program red / preview green, DSK, FTB, recording, SRT, output-down,
+signal-loss, mute), variables (`$(8kloud-switcher:program_name)`, `record_time`,
 `input_N_name`, …) and drag-and-drop presets under Program / Preview /
 Transport. `companion/test/smoke.js` is an integration test that drives a
 live switcher through the real module code.
@@ -67,10 +67,30 @@ Events: `hello` (on connect: `name`, `protocol`), `state`, `error`
 (`message`; bad commands never disconnect), `pong`. The state event
 carries program/preview, transition type, FTB, per-keyer
 on/level/src/tie/afv, record + clean-record status (incl. frames and
-fps for timecode),
-SRT status, and per-input ref/type/connected plus media and audio-lane
-state. Unassigned inputs have `"ref":""`. Commands apply on the next
-render tick; confirmation is the next state push (single-frame latency).
+fps for timecode), every program output (below), SRT status, and
+per-input ref/type/connected plus media and audio-lane state.
+Unassigned inputs have `"ref":""`. Commands apply on the next render
+tick; confirmation is the next state push (single-frame latency).
+
+### Program outputs
+
+`omtOut`, `cleanOmtOut`, `sdiOut` and `cleanSdiOut` each carry
+`{configured, up, name, frames}`. `configured` is what the show asked
+for; `up` is live health. **`configured && !up` is the operator alarm** —
+an OMT sender that failed to start, or an SDI sub-device that is absent,
+already capturing (half duplex), or cannot do the show format. `name` is
+the OMT sender name or the SDI `decklink://` ref. The bundled Companion
+module exposes this as the `output_down` feedback (per output or "any")
+plus `omt_out_state` / `sdi_out_state` / `sdi_out_name` variables.
+
+### Input `type` is a name, not a number
+
+`"type"` is one of `omt`, `srt`, `media`, `still`, `decklink` — the same
+strings the show file uses. It was an `InputSpec::Type` integer until
+v1.1; removing NDI renumbered that enum (every member but `srt` shifted),
+which would have silently changed the meaning of the old numbers, so the
+wire now carries a stable name. A client reading the pre-v1.1 integers
+must be updated.
 
 Implementation: parsing/serialization in `src/ctl/ControlProtocol.*`
 (pure, unit-tested), socket loop in `src/ctl/ControlServer.*` (one

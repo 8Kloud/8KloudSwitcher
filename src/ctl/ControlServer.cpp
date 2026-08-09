@@ -145,6 +145,18 @@ Snapshot ControlServer::snapshot() const {
     };
     s.record = rec(engine_.recordingState());
     s.cleanRecord = rec(engine_.cleanRecordingState());
+
+    s.omtOut = {engine_.omtOutRequested(), engine_.omtOutActive(),
+                engine_.omtOutName(), engine_.omtOutFrames()};
+    s.cleanOmtOut = {engine_.cleanOmtOutRequested(),
+                     engine_.cleanOmtOutActive(), engine_.cleanOmtOutName(),
+                     engine_.cleanOmtOutFrames()};
+    s.sdiOut = {!engine_.sdiOutRef().empty(), engine_.sdiOutOk(),
+                engine_.sdiOutRef(), engine_.sdiOutFrames()};
+    s.cleanSdiOut = {!engine_.cleanSdiOutRef().empty(),
+                     engine_.cleanSdiOutOk(), engine_.cleanSdiOutRef(),
+                     engine_.cleanSdiOutFrames()};
+
     s.srtConfigured = engine_.srtConfigured();
     s.srtConnected = engine_.srtConnected();
     auto* aud = engine_.audio();
@@ -153,7 +165,7 @@ Snapshot ControlServer::snapshot() const {
     for (int i = 0; i < engine_.inputCount(); ++i) {
         auto& in = s.inputs[size_t(i)];
         in.ref = engine_.inputRef(i);
-        in.type = int(engine_.inputType(i));
+        in.type = inputTypeName(engine_.inputType(i));
         in.connected = engine_.inputStatus(i).connected;
         const auto m = engine_.inputMediaState(i);
         in.media = {m.available,     m.playing,       m.loop,

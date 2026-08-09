@@ -108,7 +108,11 @@ struct MediaControlState {
 
 struct InputControlState {
     std::string ref;   // empty = unassigned (deliberate BLACK)
-    int type = 0;      // InputSpec::Type as int
+    // Transport as a stable wire name ("omt", "srt", "media", "still",
+    // "decklink"). Deliberately not InputSpec::Type's value: that enum has
+    // been renumbered before (NDI's removal shifted every member but Srt),
+    // and a client should never have to track our internal numbering.
+    std::string type;
     bool connected = false;
     MediaControlState media;
     bool audioMute = false;
@@ -124,6 +128,16 @@ struct RecordControlState {
     std::string path;
 };
 
+// A program/clean sender. `up` is the live health an operator acts on: for
+// OMT the sender exists, for SDI the card is open, in the right mode, and
+// playing out.
+struct OutputControlState {
+    bool configured = false;  // asked for in the show/CLI
+    bool up = false;
+    std::string name;  // OMT sender name, or the SDI decklink:// ref
+    int64_t frames = 0;
+};
+
 struct Snapshot {
     int program = 0;  // 0-based here; serialized 1-based
     int preview = 1;
@@ -135,6 +149,10 @@ struct Snapshot {
     std::vector<DskState> dsk;
     RecordControlState record;
     RecordControlState cleanRecord;
+    OutputControlState omtOut;
+    OutputControlState cleanOmtOut;
+    OutputControlState sdiOut;
+    OutputControlState cleanSdiOut;
     bool srtConfigured = false;
     bool srtConnected = false;
     bool audioAvailable = false;

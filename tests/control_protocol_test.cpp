@@ -23,6 +23,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "ctl/ControlProtocol.h"
+#include "engine/InputSpec.h"
 
 using kloud::ctl::Request;
 using kloud::ctl::parseLine;
@@ -221,4 +222,57 @@ TEST_CASE("control: state JSON is stable, 1-based, and escaped") {
     REQUIRE(in1 != std::string::npos);
     REQUIRE(in2 != std::string::npos);
     CHECK(j.find("\"media\"", in1) > in2);
+}
+
+TEST_CASE("control: input type is a stable name, not the enum's number") {
+    // The numbering has already shifted once (removing NDI moved every member
+    // but Srt), so the wire must never carry it.
+    CHECK(std::string(kloud::inputTypeName(kloud::InputSpec::Type::Omt)) ==
+          "omt");
+    CHECK(std::string(kloud::inputTypeName(kloud::InputSpec::Type::Srt)) ==
+          "srt");
+    CHECK(std::string(kloud::inputTypeName(kloud::InputSpec::Type::Media)) ==
+          "media");
+    CHECK(std::string(kloud::inputTypeName(kloud::InputSpec::Type::Still)) ==
+          "still");
+    CHECK(std::string(kloud::inputTypeName(kloud::InputSpec::Type::DeckLink)) ==
+          "decklink");
+
+    // Round-trip, and the fallback an older/newer show file relies on.
+    for (auto t : {kloud::InputSpec::Type::Omt, kloud::InputSpec::Type::Srt,
+                   kloud::InputSpec::Type::Media, kloud::InputSpec::Type::Still,
+                   kloud::InputSpec::Type::DeckLink})
+        CHECK(kloud::inputTypeFromName(kloud::inputTypeName(t)) == t);
+    CHECK(kloud::inputTypeFromName("ndi") == kloud::InputSpec::Type::Omt);
+    CHECK(kloud::inputTypeFromName("") == kloud::InputSpec::Type::Omt);
+
+    kloud::ctl::Snapshot s;
+    s.inputs.resize(1);
+    s.inputs[0].type = kloud::inputTypeName(kloud::InputSpec::Type::DeckLink);
+    const std::string j = kloud::ctl::toJson(s);
+    CHECK(j.find("\"type\":\"decklink\"") != std::string::npos);
+}
+
+TEST_CASE("control: state JSON reports every program output") {
+    kloud::ctl::Snapshot s;
+    s.omtOut = {true, true, "8Kloud Switcher PGM", 120};
+    s.cleanOmtOut = {false, false, "", 0};
+    // Configured but not up: the card is absent or already capturing. This is
+    // the case an operator surface has to be able to show.
+    s.sdiOut = {true, false, "decklink://0", 0};
+    s.cleanSdiOut = {true, true, "decklink://1", 99};
+
+    const std::string j = kloud::ctl::toJson(s);
+    CHECK(j == kloud::ctl::toJson(s));  // deterministic
+    CHECK(j.find("\"omtOut\":{\"configured\":true,\"up\":true,"
+                 "\"name\":\"8Kloud Switcher PGM\",\"frames\":120}") !=
+          std::string::npos);
+    CHECK(j.find("\"cleanOmtOut\":{\"configured\":false,\"up\":false,"
+                 "\"name\":\"\",\"frames\":0}") != std::string::npos);
+    CHECK(j.find("\"sdiOut\":{\"configured\":true,\"up\":false,"
+                 "\"name\":\"decklink://0\",\"frames\":0}") !=
+          std::string::npos);
+    CHECK(j.find("\"cleanSdiOut\":{\"configured\":true,\"up\":true,"
+                 "\"name\":\"decklink://1\",\"frames\":99}") !=
+          std::string::npos);
 }
