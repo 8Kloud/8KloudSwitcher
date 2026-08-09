@@ -219,6 +219,11 @@ void EngineBridge::poll() {
     if (engine_.cleanOmtOutFrames())
         status += QStringLiteral("  clean-omt %1")
                       .arg(engine_.cleanOmtOutFrames());
+    if (engine_.sdiOutFrames() || engine_.sdiOutOk())
+        status += QStringLiteral("  sdi-out %1").arg(engine_.sdiOutFrames());
+    if (engine_.cleanSdiOutFrames())
+        status += QStringLiteral("  clean-sdi %1")
+                      .arg(engine_.cleanSdiOutFrames());
     if (auto* a = engine_.audio())
         status += QStringLiteral("  aud[sk %1 un %2]")
                       .arg(a->mixSkips())

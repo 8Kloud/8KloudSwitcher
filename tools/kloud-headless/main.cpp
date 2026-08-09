@@ -189,6 +189,13 @@ int main(int argc, char** argv) {
                 cfg.cleanOmtOut = true;
                 cfg.cleanOmtOutName = v;
             }
+        } else if (a == "--sdi-out" || a == "--clean-sdi-out") {
+            // Bare index ("0") accepted, like --decklink-input.
+            if (const char* v = next()) {
+                std::string ref = v;
+                if (ref.rfind("decklink://", 0) != 0) ref = "decklink://" + ref;
+                (a == "--sdi-out" ? cfg.sdiOutRef : cfg.cleanSdiOutRef) = ref;
+            }
         } else if (a == "--srt-out") {
             if (const char* v = next()) cfg.srtUrl = v;
         } else if (a == "--srt-bitrate") {
@@ -285,6 +292,8 @@ int main(int argc, char** argv) {
                     "[--clean-record-stop-after S] "
                     "[--no-omt-out] [--omt-out-name NAME] "
                     "[--clean-omt-out NAME] "
+                    "[--sdi-out INDEX|decklink://REF] "
+                    "[--clean-sdi-out INDEX|decklink://REF] "
                     "[--show WxH] [--duration S] [--dump-dir D] "
                     "[--dump-every S] [--cuts] [--no-audio] "
                     "[--audio-delay MS] [--framesync IDX[:FRAMES]] "
@@ -430,6 +439,13 @@ int main(int argc, char** argv) {
             if (engine.cleanOmtOutFrames())
                 line += "  cleanOmt[f=" +
                         std::to_string(engine.cleanOmtOutFrames()) + "]";
+            if (!cfg.sdiOutRef.empty())
+                line += "  sdi[" +
+                        std::string(engine.sdiOutOk() ? "up" : "down") +
+                        " f=" + std::to_string(engine.sdiOutFrames()) + "]";
+            if (engine.cleanSdiOutFrames())
+                line += "  cleanSdi[f=" +
+                        std::to_string(engine.cleanSdiOutFrames()) + "]";
             for (int i = 0; i < engine.inputCount(); ++i) {
                 const auto s = engine.inputStatus(i);
                 line += "  in" + std::to_string(i) + "[" +

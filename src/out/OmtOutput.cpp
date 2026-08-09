@@ -140,16 +140,24 @@ void OmtOutput::run(std::stop_token st) {
         lastSent = newest;
         if (slot < 0) continue;  // engine skipped packing that tick
 
+        // Pin before reading, then confirm the slot still holds our frame:
+        // the render thread may have recycled it while we were looking.
+        if (!comp_.packTryPin(slot, feed_)) continue;
+        if (comp_.packStamp(slot, feed_).load(std::memory_order_acquire) !=
+            newest) {
+            comp_.packUnpin(slot, feed_);
+            continue;
+        }
+
         // The stamp above is the acquire that publishes this tick's pts.
         const int64_t ptsNs = slotPts_[size_t(slot)].load(
             std::memory_order_relaxed);
         vf.Timestamp = (ptsNs ? ptsNs : MediaClock::nowNs()) / 100;
 
-        comp_.packPinned(slot, feed_).store(true, std::memory_order_release);
         vf.Data = const_cast<uint8_t*>(comp_.packPtr(slot, feed_));
         omt_send(sender_, &vf);  // VMX encode happens in this call
         // Synchronous: our buffer is free the moment it returns.
-        comp_.packPinned(slot, feed_).store(false, std::memory_order_release);
+        comp_.packUnpin(slot, feed_);
         sent_.fetch_add(1, std::memory_order_relaxed);
         sentCtr.add();
     }

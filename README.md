@@ -1,8 +1,8 @@
 # 8Kloud Switcher
 
 A live video switcher for Linux + NVIDIA: OMT, SDI and SRT inputs, program/preview
-switching with transitions, OMT and SRT (HEVC/NVENC) program outputs, full audio mixer,
-Qt 6 GUI with Vulkan multiview. Built for low latency at up to 8K 59.94p.
+switching with transitions, OMT, SDI and SRT (HEVC/NVENC) program outputs, full audio
+mixer, Qt 6 GUI with Vulkan multiview. Built for low latency at up to 8K 59.94p.
 
 Status: **v1 complete (M0–M6), v2 frame sync landed**. 8K-hardened engine (30-min soak: zero
 tick overruns, 1.5-frame latency, <2 cores full pipeline, NVENC 54%), full audio mixer (A/V
@@ -72,6 +72,14 @@ are HEVC video plus 48 kHz stereo AAC in a finalized Matroska (`.mkv`) file;
 encoding and disk I/O run off the render thread, and recorder backpressure never
 stalls program. Headless: `--record PATH.mkv [--record-bitrate KBPS]` (bitrate
 defaults from the output format).
+
+Put the program feed on **SDI** with `--sdi-out 0` (a bare device index or a
+`decklink://` ref, on either executable; `--clean-sdi-out` does the same for the
+clean feed). It reuses the same UYVY pack the network sender reads, so it costs
+no conversion. The card cannot rescale — the sub-device must offer the show
+format exactly — and half duplex means a sub-device sending SDI cannot also
+capture, so use separate sub-devices for in and out. MediaClock stays master
+rather than genlocking to the card; see `docs/decklink.md`.
 
 Use **CLEAN REC** for the switched A/B mix without DSK graphics. The clean feed
 retains transitions, FTB, and master audio. Program and clean recordings can

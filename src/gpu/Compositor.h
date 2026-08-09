@@ -39,13 +39,17 @@ namespace kloud::gpu {
 //   pack_uyvy.comp:      program -> UYVY words (device buffer, for OMT out)
 //   proxy_down.comp:     inputs + program -> <=960x544 RGBA8 proxies
 //   multiview_tile.comp: proxies/labels/solid borders -> multiview RGBA8
-// plus multiview -> host readback and the pack -> host ring for the OMT
-// sender (4 slots: sender pins up to 2, one in DMA flight, one writable).
+// plus multiview -> host readback and the pack -> host ring shared by the
+// network and SDI senders (see the pack-slot ownership rules below).
 class Compositor {
 public:
     static constexpr int kFramesInFlight = 2;
     static constexpr int kReadbackSlots = 3;   // multiview (GUI)
-    static constexpr int kPackSlots = 4;       // program UYVY (OMT out)
+    // Program UYVY. Two senders (OMT + SDI) can sit a frame apart and pin
+    // different slots, so budget: 2 pinned, one in DMA flight, one writable,
+    // plus one of margin.
+    static constexpr int kPackSlots = 5;
+    static constexpr uint32_t kPackWriter = 1u << 31;  // exclusive writer bit
     static constexpr int kFeedCount = 2;
     static constexpr int kProxyW = 960, kProxyH = 544;
     static constexpr int kLabelRowH = 24;
@@ -100,8 +104,39 @@ public:
     std::atomic<uint64_t>& packStamp(int slot, Feed feed = Feed::Program) {
         return packStamp_[int(feed)][slot];
     }
-    std::atomic<bool>& packPinned(int slot, Feed feed = Feed::Program) {
-        return packPinned_[int(feed)][slot];
+
+    // Pack-slot ownership. A slot can be held by the render thread (writer,
+    // exclusive) or by any number of senders (readers), never both -- the
+    // OMT and SDI outputs both consume a feed, and each grabs the newest slot
+    // for only as long as it takes to hand the bytes on.
+    //
+    // Render thread: take the slot BEFORE stamping it, so a sender cannot pin
+    // it during the window between selection and the stamp store and then
+    // read a buffer that is about to be DMA'd into.
+    bool packTryAcquireWrite(int slot, Feed feed) {
+        uint32_t expected = 0;
+        return packPins_[int(feed)][slot].compare_exchange_strong(
+            expected, kPackWriter, std::memory_order_acquire,
+            std::memory_order_relaxed);
+    }
+    void packReleaseWrite(int slot, Feed feed) {
+        packPins_[int(feed)][slot].fetch_and(~kPackWriter,
+                                             std::memory_order_release);
+    }
+    // Sender: pin for reading unless the writer owns it. Re-check packStamp
+    // after this succeeds -- the slot may have been recycled first.
+    bool packTryPin(int slot, Feed feed) {
+        auto& pins = packPins_[int(feed)][slot];
+        uint32_t p = pins.load(std::memory_order_relaxed);
+        do {
+            if (p & kPackWriter) return false;
+        } while (!pins.compare_exchange_weak(p, p + 1,
+                                             std::memory_order_acquire,
+                                             std::memory_order_relaxed));
+        return true;
+    }
+    void packUnpin(int slot, Feed feed) {
+        packPins_[int(feed)][slot].fetch_sub(1, std::memory_order_release);
     }
 
     // NV12 pack buffers for SRT/recorders (exportable; importer owns fds).
@@ -177,7 +212,7 @@ private:
     Buffer packNvDev_[kFeedCount][kFramesInFlight];
     Buffer packHost_[kFeedCount][kPackSlots];
     std::atomic<uint64_t> packStamp_[kFeedCount][kPackSlots]{};
-    std::atomic<bool> packPinned_[kFeedCount][kPackSlots]{};
+    std::atomic<uint32_t> packPins_[kFeedCount][kPackSlots]{};
 
     Image labelAtlas_{};
     std::vector<int> labelUsedW_;

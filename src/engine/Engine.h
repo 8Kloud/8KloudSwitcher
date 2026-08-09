@@ -48,6 +48,7 @@
 namespace kloud {
 
 class OmtOutput;
+class DeckLinkOutput;
 class FileRecorder;
 class SrtOutput;
 
@@ -81,6 +82,11 @@ struct EngineConfig {
     std::string omtOutName = "8Kloud Switcher PGM";
     bool cleanOmtOut = false;
     std::string cleanOmtOutName = "8Kloud Switcher CLEAN";
+    // SDI program/clean output: a decklink:// ref each, empty = off. The card
+    // cannot rescale, so the sub-device must offer the show format exactly.
+    // Half duplex means a sub-device doing this cannot also capture.
+    std::string sdiOutRef;
+    std::string cleanSdiOutRef;
     std::string srtUrl;      // empty = SRT output off
     int srtBitrateKbps = 0;  // 0 = auto
     int recordBitrateKbps = 0;  // 0 = auto; independent of SRT output
@@ -179,6 +185,9 @@ public:
     int64_t skippedTicks() const { return skips_.load(std::memory_order_relaxed); }
     int64_t omtOutFrames() const;
     int64_t cleanOmtOutFrames() const;
+    int64_t sdiOutFrames() const;
+    int64_t cleanSdiOutFrames() const;
+    bool sdiOutOk() const;
     int64_t srtFramesEncoded() const;
     bool srtConnected() const;
     bool srtConfigured() const { return srtOut_ != nullptr; }
@@ -197,6 +206,8 @@ private:
     std::vector<std::unique_ptr<IInputSource>> inputs_;
     std::unique_ptr<OmtOutput> omtOut_;
     std::unique_ptr<OmtOutput> cleanOmtOut_;
+    std::unique_ptr<DeckLinkOutput> sdiOut_;
+    std::unique_ptr<DeckLinkOutput> cleanSdiOut_;
     media::CudaCtx cuda_;
     std::unique_ptr<SrtOutput> srtOut_;
     // Atomic shared ownership lets the audio and render threads take a

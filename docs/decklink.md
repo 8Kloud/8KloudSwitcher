@@ -1,4 +1,4 @@
-# DeckLink SDI input
+# DeckLink SDI input and output
 
 8-bit UYVY capture from Blackmagic DeckLink cards, up to 8K. Implemented in
 `src/decklink/` behind the same `IInputSource` seam as the network inputs.
@@ -90,11 +90,11 @@ what has the card open:
 fuser -v /dev/blackmagic/*
 ```
 
-On this dev box the `kloudconnect` service (`/etc/kloudconnect/camera.json`,
-`"sdi": {"enabled": true, "device": 0}`) holds device 0 for SDI output, which
-blocks capture on the same sub-device. The error is logged once every 10 s
-while the open loop retries, so the input recovers on its own once the device
-frees up.
+Our own SDI output counts as "something else": `--sdi-out 0` and
+`--decklink-input 0` on the same sub-device will not both work. Use different
+sub-devices (measured working: output on device 0 while device 1 captures).
+The error is logged once every 10 s while the open loop retries, so the input
+recovers on its own once the device frees up.
 
 **`device has no input interface`** — wrong profile, see the table above.
 
@@ -114,6 +114,40 @@ to the GPU. That host-RAM round trip is real and does not exist on the SRT/NVDEC
 path, which decodes straight into device memory — see `docs/bench-m5.md` for the
 DDR5 saturation limit that bounds how many 8K streams a single box can carry.
 
+## SDI output
+
+`--sdi-out INDEX|decklink://REF` puts the program feed on a sub-device, and
+`--clean-sdi-out` does the same for the clean feed (no DSK graphics). Both
+flags work on `kloud-headless` and `8kloud-switcher`, take a bare index for
+convenience, and persist in the GUI show file as `sdiOut` / `cleanSdiOut`.
+
+It is cheap for the same reason the input is: `pack_uyvy.comp` already produces
+the exact bytes `bmdFormat8BitYUV` wants, so the output reuses the pack ring the
+network sender reads and does no conversion. It does copy each frame into an
+SDK-allocated frame rather than wrapping the pack slot, deliberately — scheduled
+playback holds a frame until the card has clocked it out, so wrapping would pin
+one ring slot per frame of preroll and starve the ring.
+
+**The card cannot rescale.** The sub-device must offer the show format exactly
+or the output refuses to start and says so; an explicit `@mode` in the ref
+overrides the format match.
+
+**Clocking is not genlocked.** MediaClock stays master and the card's scheduler
+absorbs the difference: three frames of preroll, and a frame is skipped
+(`out.sdi.bufferDeep`) if the card's queue walks past the target depth. Measured
+on this box, 3598 frames went out for 3598 render ticks over 60 s with no
+correction needed at all. True genlock would mean pacing the render loop off
+`GetHardwareReferenceClock` instead, which changes who owns the engine clock.
+
+Audio is embedded as 32-bit PCM on the same sub-device. The output enters
+`BeginAudioPreroll` at open and leaves it when playback starts: without that the
+card's audio queue accepts only part of the pre-playback audio and silently
+truncates the rest (measured 1680 sample frames = 35 ms), which would show up as
+a permanent A/V offset.
+
+Counters: `out.sdi.sent` / `out.sdi.clean.sent`, plus `late`, `dropped`,
+`flushed`, `bufferDeep`, `poolStarved`, `droppedToLatest`, `audioShort`.
+
 ## Not implemented
 
 - **10-bit v210.** The card offers it on every mode. Note it is a *packed*
@@ -122,3 +156,6 @@ DDR5 saturation limit that bounds how many 8K streams a single box can carry.
 - Timecode (RP188), ancillary data, more than 2 audio channels (the card does
   up to 64), reference/genlock configuration, and capture groups for
   hardware-aligned multi-channel starts.
+- **Genlocked output.** See the clocking note above.
+- **Keying.** The card has a hardware keyer (`IDeckLinkKeyer`); the SDI output
+  sends a filled program only.

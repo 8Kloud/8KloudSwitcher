@@ -44,6 +44,8 @@ bool ShowFile::State::cfgEquals(const EngineConfig& a, const EngineConfig& b) {
            a.omtOutName == b.omtOutName &&
            a.cleanOmtOut == b.cleanOmtOut &&
            a.cleanOmtOutName == b.cleanOmtOutName &&
+           a.sdiOutRef == b.sdiOutRef &&
+           a.cleanSdiOutRef == b.cleanSdiOutRef &&
            a.srtUrl == b.srtUrl &&
            a.srtBitrateKbps == b.srtBitrateKbps &&
            a.recordBitrateKbps == b.recordBitrateKbps && a.audio == b.audio &&
@@ -85,6 +87,14 @@ bool ShowFile::load(State& st) const {
     st.cfg.cleanOmtOutName =
         s.value("cleanOmtOutName",
                 QString::fromStdString(st.cfg.cleanOmtOutName))
+            .toString()
+            .toStdString();
+    st.cfg.sdiOutRef =
+        s.value("sdiOut", QString::fromStdString(st.cfg.sdiOutRef))
+            .toString()
+            .toStdString();
+    st.cfg.cleanSdiOutRef =
+        s.value("cleanSdiOut", QString::fromStdString(st.cfg.cleanSdiOutRef))
             .toString()
             .toStdString();
     st.cfg.srtUrl = s.value("srtOut", QString::fromStdString(st.cfg.srtUrl))
@@ -201,6 +211,8 @@ void ShowFile::save(const State& st) const {
     s.setValue("cleanOmtOut", st.cfg.cleanOmtOut);
     s.setValue("cleanOmtOutName",
                QString::fromStdString(st.cfg.cleanOmtOutName));
+    s.setValue("sdiOut", QString::fromStdString(st.cfg.sdiOutRef));
+    s.setValue("cleanSdiOut", QString::fromStdString(st.cfg.cleanSdiOutRef));
     s.setValue("srtOut", QString::fromStdString(st.cfg.srtUrl));
     s.setValue("srtBitrateKbps", st.cfg.srtBitrateKbps);
     s.setValue("recordBitrateKbps", st.cfg.recordBitrateKbps);

@@ -125,6 +125,7 @@ add_library(kloud_engine STATIC
   src/ctl/ControlServer.cpp
   src/in/SrtInput.cpp
   src/in/StillInput.cpp
+  src/out/DeckLinkOutput.cpp
   src/out/FileRecorder.cpp
   src/out/OmtOutput.cpp
   src/out/SrtOutput.cpp

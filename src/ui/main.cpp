@@ -86,6 +86,15 @@ int main(int argc, char** argv) {
             cfg.cleanOmtOut = true;
             cfg.cleanOmtOutName = args[++i].toStdString();
         }
+        else if ((args[i] == QStringLiteral("--sdi-out") ||
+                  args[i] == QStringLiteral("--clean-sdi-out")) &&
+                 i + 1 < args.size()) {
+            const bool clean = args[i] == QStringLiteral("--clean-sdi-out");
+            QString ref = args[++i];  // bare index accepted
+            if (!ref.startsWith(QStringLiteral("decklink://")))
+                ref.prepend(QStringLiteral("decklink://"));
+            (clean ? cfg.cleanSdiOutRef : cfg.sdiOutRef) = ref.toStdString();
+        }
         else if (args[i] == QStringLiteral("--show") && i + 1 < args.size()) {
             const auto parts = args[++i].split('x');
             if (parts.size() == 2) {

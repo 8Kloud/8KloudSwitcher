@@ -31,6 +31,7 @@
 #include "engine/FrameSync.h"
 #include "in/SrtInput.h"
 #include "in/StillInput.h"
+#include "out/DeckLinkOutput.h"
 #include "out/FileRecorder.h"
 #include "out/OmtOutput.h"
 #include "out/SrtOutput.h"
@@ -78,6 +79,13 @@ int64_t Engine::omtOutFrames() const { return omtOut_ ? omtOut_->framesSent() : 
 int64_t Engine::cleanOmtOutFrames() const {
     return cleanOmtOut_ ? cleanOmtOut_->framesSent() : 0;
 }
+int64_t Engine::sdiOutFrames() const {
+    return sdiOut_ ? sdiOut_->framesSent() : 0;
+}
+int64_t Engine::cleanSdiOutFrames() const {
+    return cleanSdiOut_ ? cleanSdiOut_->framesSent() : 0;
+}
+bool Engine::sdiOutOk() const { return sdiOut_ && sdiOut_->ok(); }
 int64_t Engine::srtFramesEncoded() const {
     return srtOut_ ? srtOut_->framesEncoded() : 0;
 }
@@ -279,6 +287,15 @@ bool Engine::start(const EngineConfig& cfg) {
             gpu::Compositor::Feed::Clean);
         if (!cleanOmtOut_->ok()) cleanOmtOut_.reset();
     }
+    // SDI senders open asynchronously (the card may be busy at start), so
+    // unlike the OMT ones there is nothing to test for here.
+    if (!cfg_.sdiOutRef.empty())
+        sdiOut_ = std::make_unique<DeckLinkOutput>(
+            cfg_.sdiOutRef, *comp_, readbackTL_, cfg_.show);
+    if (!cfg_.cleanSdiOutRef.empty())
+        cleanSdiOut_ = std::make_unique<DeckLinkOutput>(
+            cfg_.cleanSdiOutRef, *comp_, readbackTL_, cfg_.show,
+            gpu::Compositor::Feed::Clean);
 
     for (size_t i = 0; i < cfg_.inputs.size(); ++i) {
         // Spread inputs across both DMA engines; serialized 66MB 8K copies on
@@ -350,6 +367,16 @@ bool Engine::start(const EngineConfig& cfg) {
                                 const float* lr, int frames, int64_t s0) {
                 out->sendAudio(lr, frames, s0);
             });
+        if (sdiOut_)
+            audio_->addSink(
+                [out = sdiOut_.get()](const float* lr, int frames, int64_t s0) {
+                    out->sendAudio(lr, frames, s0);
+                });
+        if (cleanSdiOut_)
+            audio_->addSink([out = cleanSdiOut_.get()](
+                                const float* lr, int frames, int64_t s0) {
+                out->sendAudio(lr, frames, s0);
+            });
         if (srtOut_)
             audio_->addSink(
                 [out = srtOut_.get()](const float* lr, int frames, int64_t s0) {
@@ -372,15 +399,19 @@ bool Engine::start(const EngineConfig& cfg) {
     // samples from (see OmtOutput's timestamp contract).
     if (omtOut_) omtOut_->setClockOrigin(clock_.originNs());
     if (cleanOmtOut_) cleanOmtOut_->setClockOrigin(clock_.originNs());
+    if (sdiOut_) sdiOut_->setClockOrigin(clock_.originNs());
+    if (cleanSdiOut_) cleanSdiOut_->setClockOrigin(clock_.originNs());
     if (audio_) audio_->start(clock_.originNs());
     renderThread_ = std::jthread([this](std::stop_token st) { renderLoop(st); });
     started_ = true;
     KLOUD_LOGI("engine started: show %dx%d @ %lld/%lld, %zu inputs, mv %dx%d, "
-             "omtOut=%s, cleanOmt=%s",
+             "omtOut=%s, cleanOmt=%s, sdiOut=%s, cleanSdi=%s",
              cfg_.show.width, cfg_.show.height, (long long)cfg_.show.fpsN,
              (long long)cfg_.show.fpsD, inputs_.size(), comp_->mvWidth(),
              comp_->mvHeight(), omtOut_ ? cfg_.omtOutName.c_str() : "off",
-             cleanOmtOut_ ? cfg_.cleanOmtOutName.c_str() : "off");
+             cleanOmtOut_ ? cfg_.cleanOmtOutName.c_str() : "off",
+             sdiOut_ ? cfg_.sdiOutRef.c_str() : "off",
+             cleanSdiOut_ ? cfg_.cleanSdiOutRef.c_str() : "off");
     return true;
 }
 
@@ -508,6 +539,8 @@ void Engine::stop() {
     inputs_.clear();     // capture threads stop writing the audio rings
     audio_.reset();      // mixer stops; no more sink calls into the outputs
     srtOut_.reset();     // drains encoder, releases CUDA imports (device alive)
+    cleanSdiOut_.reset();
+    sdiOut_.reset();     // stops playback before the pack buffers go away
     cleanOmtOut_.reset();
     omtOut_.reset();     // stops sender before its buffers go away
     if (renderTL_.lastReserved())
@@ -982,30 +1015,29 @@ void Engine::renderLoop(std::stop_token st) {
         }
         retention_[fif].clear();
 
-        // -- pick a pack slot for the OMT output (skip if the ring is busy) --
-        const auto pickPackSlot = [&](OmtOutput* output,
+        // -- pick a pack slot for the senders (skip if the ring is busy).
+        //    Acquiring the slot here holds it until the stamp is published
+        //    below, so no sender can pin the buffer we are about to fill. --
+        const auto pickPackSlot = [&](bool wanted,
                                       gpu::Compositor::Feed feed,
                                       Stats::Counter& busyCounter) {
-            if (!output) return -1;
+            if (!wanted) return -1;
             const uint64_t rbDone = readbackTL_.completed();
             for (int s = 0; s < gpu::Compositor::kPackSlots; ++s) {
-                if (comp_->packPinned(s, feed).load(
-                        std::memory_order_acquire))
-                    continue;
                 if (comp_->packStamp(s, feed).load(
                         std::memory_order_acquire) > rbDone)
                     continue;  // DMA still in flight
-                return s;
+                if (comp_->packTryAcquireWrite(s, feed)) return s;
             }
             busyCounter.add();
             return -1;
         };
-        const int packSlot =
-            pickPackSlot(omtOut_.get(), gpu::Compositor::Feed::Program,
-                         packSkipCtr);
-        const int cleanPackSlot =
-            pickPackSlot(cleanOmtOut_.get(), gpu::Compositor::Feed::Clean,
-                         cleanPackSkipCtr);
+        const int packSlot = pickPackSlot(omtOut_ || sdiOut_,
+                                          gpu::Compositor::Feed::Program,
+                                          packSkipCtr);
+        const int cleanPackSlot = pickPackSlot(cleanOmtOut_ || cleanSdiOut_,
+                                               gpu::Compositor::Feed::Clean,
+                                               cleanPackSkipCtr);
         tj.packProgram = packSlot >= 0;
         tj.packClean = cleanPackSlot >= 0;
 
@@ -1094,20 +1126,27 @@ void Engine::renderLoop(std::stop_token st) {
 
         // -- pack readback on the down queue (chained on this render) --
         if (packSlot >= 0 || cleanPackSlot >= 0) {
-            // The sender timestamps this frame with the tick's presentation
-            // time, so the readback lag never skews its A/V; the packStamp
-            // release below is what publishes the pts.
+            // The senders timestamp this frame with the tick's presentation
+            // time, so the readback lag never skews their A/V; the packStamp
+            // release is what publishes the pts, and dropping the writer bit
+            // after it is what lets a sender pin the slot.
             const int64_t tickNs = clock_.nsForTick(n);
             if (packSlot >= 0) {
-                omtOut_->stampSlot(packSlot, tickNs);
+                if (omtOut_) omtOut_->stampSlot(packSlot, tickNs);
+                if (sdiOut_) sdiOut_->stampSlot(packSlot, tickNs);
                 comp_->packStamp(packSlot, gpu::Compositor::Feed::Program)
                     .store(value, std::memory_order_release);
+                comp_->packReleaseWrite(packSlot,
+                                        gpu::Compositor::Feed::Program);
             }
             if (cleanPackSlot >= 0) {
-                cleanOmtOut_->stampSlot(cleanPackSlot, tickNs);
+                if (cleanOmtOut_) cleanOmtOut_->stampSlot(cleanPackSlot, tickNs);
+                if (cleanSdiOut_) cleanSdiOut_->stampSlot(cleanPackSlot, tickNs);
                 comp_->packStamp(cleanPackSlot,
                                  gpu::Compositor::Feed::Clean)
                     .store(value, std::memory_order_release);
+                comp_->packReleaseWrite(cleanPackSlot,
+                                        gpu::Compositor::Feed::Clean);
             }
             VkCommandBuffer dcmd = downBufs_[fif];
             vkResetCommandBuffer(dcmd, 0);
