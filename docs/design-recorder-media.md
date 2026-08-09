@@ -22,7 +22,7 @@ layers,
 - A local raster still can occupy a normal input slot. It remains on-air until
   replaced, and non-opaque source alpha is retained for DSK use.
 
-ISO recording remains a later layer. Clean-feed recording and NDI output are
+ISO recording remains a later layer. Clean-feed recording and network output are
 implemented separately in `design-clean-feed.md`. Instant replay is
 intentionally outside 8Kloud Switcher's scope.
 

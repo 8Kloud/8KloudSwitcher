@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Measures NDI SpeedHQ CPU cost on this host: encode (kloud-testgen process)
+# Measures OMT/VMX codec CPU cost on this host: encode (kloud-testgen process)
 # and decode (kloud-latmeter process) in cores, plus delivered fps/latency.
-# Usage: bench_speedhq.sh [WxH] [seconds] [builddir]
+# Usage: bench_codec.sh [WxH] [seconds] [builddir]
 set -euo pipefail
 
 SIZE="${1:-7680x4320}"
@@ -30,8 +30,8 @@ echo "== SpeedHQ bench: $SIZE, ${SECS}s window =="
 awk -v t0="$T0" -v t1="$T1" -v a0="$C0_TG" -v a1="$C1_TG" \
     -v b0="$C0_LM" -v b1="$C1_LM" 'BEGIN {
   dt = t1 - t0
-  printf "  testgen  (pattern stamp + SpeedHQ encode): %5.2f cores\n", (a1-a0)/dt
-  printf "  latmeter (SpeedHQ decode + strip read):    %5.2f cores\n", (b1-b0)/dt
+  printf "  testgen  (pattern stamp + VMX encode): %5.2f cores\n", (a1-a0)/dt
+  printf "  latmeter (VMX decode + strip read):    %5.2f cores\n", (b1-b0)/dt
 }'
 echo "  last latmeter samples (fps / gaps / latency):"
 tail -n 3 "$CSV" | sed 's/^/    /'

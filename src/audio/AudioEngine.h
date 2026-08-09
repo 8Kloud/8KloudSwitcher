@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <atomic>
@@ -40,7 +40,7 @@ constexpr int kMaxFillFrames = 4800;  // 100 ms: trim back to prefill beyond thi
 
 // One input's audio lane: an SPSC ring written by the capture/decode thread
 // and drained by the mixer tick, plus operator controls and meters. The
-// prefill hold absorbs sender chunk cadence (NDI delivers ~10-20 ms bursts);
+// prefill hold absorbs sender chunk cadence (OMT delivers ~10-20 ms bursts);
 // the trim bounds steady-state latency after stalls or connect backlogs.
 class InputChannel {
 public:
@@ -51,7 +51,7 @@ public:
 
     // Writer side (one capture/decode thread per channel). Planar callers
     // with mono sources pass the same plane twice. Non-48k audio is counted
-    // and dropped (NDI/SRT sources are 48 kHz in practice; v1 does not
+    // and dropped (OMT/SRT sources are 48 kHz in practice; v1 does not
     // resample on this path). senderPtsNs (same clock as the input's video
     // pts) feeds the frame-sync A/V measurement below; pass kNoPts when the
     // source doesn't timestamp audio.
@@ -117,7 +117,7 @@ private:
 // render loop (sample index m*kChunkFrames lines up with mixer tick time
 // exactly), so output sample counts are valid PTS against video tick PTS. Each tick pulls
 // the input rings, runs MixerCore with the latest video bus snapshot, updates
-// meters, and fans the master chunk out to PCM sinks (NDI embed, AAC->TS).
+// meters, and fans the master chunk out to PCM sinks (OMT embed, AAC->TS).
 // Sinks run on the mixer thread and must never block.
 class AudioEngine {
 public:

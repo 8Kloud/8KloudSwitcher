@@ -4,7 +4,7 @@
 **9923** by default (`--control-port N` to change, `0` to disable), and
 `kloud-headless` only when given `--control-port N` (benches run several
 instances side by side, so headless defaults off). The listener binds
-`0.0.0.0` — the LAN is trusted, same as NDI. A failed bind (port taken)
+`0.0.0.0` — the LAN is trusted, same as the media transports. A failed bind (port taken)
 logs and disables remote control; it never stops the show.
 
 Up to 16 clients; a client that stops reading for ~1 MiB of queued pushes

@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "ui/MainWindow.h"
 
@@ -616,11 +616,11 @@ QDialogButtonBox QPushButton:hover {
 // straight to EngineBridge::replaceInput.
 enum PickerAction {
     kPickKeep = -100,   // current assignment; selecting it is a no-op
-    kPickBlack = -101,  // unassign: empty NDI ref renders black
+    kPickBlack = -101,  // unassign: an empty ref renders black
     kPickSrt = -102,    // prompt for an srt:// URL
 };
 
-// A combo whose list is rebuilt from live NDI/OMT discovery right before it
+// A combo whose list is rebuilt from live OMT/SDI discovery right before it
 // opens, so freshly announced sources appear without a refresh button.
 class SourceCombo : public QComboBox {
 public:
@@ -1097,7 +1097,7 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
     auto* inputsHeader = new QHBoxLayout;
     inputsHeader->addWidget(makeSectionTitle(
         QStringLiteral("INPUT SOURCES"),
-        QStringLiteral("PATCH NDI / OMT / SRT · UNASSIGNED INPUTS ARE BLACK")));
+        QStringLiteral("PATCH OMT / SDI / SRT · UNASSIGNED INPUTS ARE BLACK")));
     inputsHeader->addStretch(1);
     auto* inputsHint = new QLabel(QStringLiteral(
         "MEDIA, STILLS & FRAME SYNC: AUDIO MIXER → SOURCE NAME"));
@@ -1136,9 +1136,6 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
                 combo->setItemData(combo->count() - 1, ref, Qt::UserRole + 1);
             };
             add(QStringLiteral("BLACK"), kPickBlack, {});
-            for (const QString& name : bridge_.ndiSourceNames())
-                add(QStringLiteral("NDI · ") + name,
-                    int(InputSpec::Type::Ndi), name);
             for (const QString& name : bridge_.omtSourceNames())
                 add(QStringLiteral("OMT · ") + name,
                     int(InputSpec::Type::Omt), name);
@@ -1156,7 +1153,7 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
                         row = r;
                 if (row < 0) {
                     // Current source is not in discovery (SRT, media, still,
-                    // or an offline NDI name) -- keep it visible and selected.
+                    // or an offline OMT name) -- keep it visible and selected.
                     combo->insertItem(1, displayName(current), kPickKeep);
                     combo->setItemData(1, current, Qt::UserRole + 1);
                     row = 1;
@@ -1189,7 +1186,7 @@ MainWindow::MainWindow(EngineBridge& bridge, const QStringList& inputNames,
                     collapse();
                 else
                     bridge_.replaceInput(i, {}, -1,
-                                         int(InputSpec::Type::Ndi));
+                                         int(InputSpec::Type::Omt));
                 return;
             }
             if (action == kPickSrt) {
@@ -1563,7 +1560,7 @@ ShowFile::State MainWindow::collectState() const {
     state.cfg.inputs.clear();
     for (int i = 0; i < bridge_.inputCount(); ++i) {
         // The engine knows each input's true type; re-deriving it from the
-        // ref would misfile OMT discovery names (no scheme) as NDI.
+        // ref would misfile scheme-less refs.
         InputSpec spec{InputSpec::Type(bridge_.inputType(i)),
                        bridge_.inputRef(i).toStdString(),
                        bridge_.inputSyncFrames(i)};

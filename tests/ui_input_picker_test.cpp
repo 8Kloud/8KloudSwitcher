@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -63,9 +63,9 @@ TEST_CASE("input picker assigns and clears sources") {
 
     Engine engine;
     EngineConfig cfg;
-    cfg.ndiOut = false;
+    cfg.omtOut = false;
     cfg.audio = false;
-    cfg.inputs = {{InputSpec::Type::Ndi, ""}, {InputSpec::Type::Ndi, ""}};
+    cfg.inputs = {{InputSpec::Type::Omt, ""}, {InputSpec::Type::Omt, ""}};
     REQUIRE(engine.start(cfg));
 
     {
@@ -92,13 +92,13 @@ TEST_CASE("input picker assigns and clears sources") {
         CHECK(picker->currentIndex() == 0);
 
         // Activating a (synthetic) discovery row patches the engine input.
-        picker->addItem(QStringLiteral("NDI · KloudCam"),
-                        int(InputSpec::Type::Ndi));
+        picker->addItem(QStringLiteral("OMT · KloudCam"),
+                        int(InputSpec::Type::Omt));
         picker->setItemData(picker->count() - 1, QStringLiteral("KloudCam"),
                             Qt::UserRole + 1);
         emit picker->activated(picker->count() - 1);
         REQUIRE(waitFor([&] { return engine.inputRef(0) == "KloudCam"; }));
-        CHECK(engine.inputType(0) == InputSpec::Type::Ndi);
+        CHECK(engine.inputType(0) == InputSpec::Type::Omt);
 
         // The bridge poll collapses the picker to the new assignment.
         REQUIRE(waitFor([&] {
@@ -127,9 +127,9 @@ TEST_CASE("input picker assigns a DeckLink source") {
 
     Engine engine;
     EngineConfig cfg;
-    cfg.ndiOut = false;
+    cfg.omtOut = false;
     cfg.audio = false;
-    cfg.inputs = {{InputSpec::Type::Ndi, ""}};
+    cfg.inputs = {{InputSpec::Type::Omt, ""}};
     REQUIRE(engine.start(cfg));
 
     {

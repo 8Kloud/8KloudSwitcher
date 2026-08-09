@@ -1,5 +1,10 @@
 # Frame-sync bench record (v2, 2026-07-07)
 
+> **Historical record.** These runs measured the NDI transport, which was
+> removed in favour of OMT/SDI/SRT (see `README.md`). The pipeline, GPU and
+> encoder numbers still stand; the NDI-specific transport figures are kept
+> for provenance, not as current guidance.
+
 Design: `docs/design-framesync.md`. Box: RTX 5090 / 9900X (see `docs/bench-m5.md`
 for the machine record). All runs same-host: 2× `kloud-testgen` 1080p59.94 (flash+tone)
 → `kloud-headless` (NDI out + SRT out listener :9710) → `kloud-latmeter` (NDI-path av)

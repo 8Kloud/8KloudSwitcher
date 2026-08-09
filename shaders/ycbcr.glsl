@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 // Shared YCbCr helpers: limited-range BT.709/601 conversion and sampling of
 // UYVY frames stored as RGBA8 textures at (width/2, height) -- one texel per

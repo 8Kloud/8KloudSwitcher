@@ -1,5 +1,10 @@
 # DSK bench (K2) — 2026-07-10
 
+> **Historical record.** These runs measured the NDI transport, which was
+> removed in favour of OMT/SDI/SRT (see `README.md`). The pipeline, GPU and
+> encoder numbers still stand; the NDI-specific transport figures are kept
+> for provenance, not as current guidance.
+
 Box: 5090 / 9900X (see `bench-m5.md` for the baseline pipeline numbers at
 `b150fd5`).
 

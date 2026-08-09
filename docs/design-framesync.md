@@ -1,5 +1,10 @@
 # Frame Sync — per-input re-timing + automatic A/V trim (v2 design)
 
+> **Note.** Written while NDI was the network transport. It was removed in
+> v1.1 (OMT/SDI/SRT only); references to NDI below describe the sources the
+> measurements were taken against. The design and the mechanics it
+> describes are transport-independent and unchanged.
+
 Status: IMPLEMENTED (F1–F4, 2026-07-07) — §10 records where the implementation
 deviated from the plan and what the benches measured.
 Prereq reading: `docs/bench-m5.md` (phase judder, A/V scatter numbers), plan §"Threading".

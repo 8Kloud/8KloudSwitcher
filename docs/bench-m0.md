@@ -1,5 +1,10 @@
 # M0 Bench Report — NDI throughput & instrumentation validation
 
+> **Historical record.** These runs measured the NDI transport, which was
+> removed in favour of OMT/SDI/SRT (see `README.md`). The pipeline, GPU and
+> encoder numbers still stand; the NDI-specific transport figures are kept
+> for provenance, not as current guidance.
+
 Date: 2026-07-05 · Host: Ryzen 9 9900X (12C/24T), 62GB DDR5, RTX 5090, CachyOS
 NDI SDK: 6.3.2 (2026-04-13) · Tools: kloud-testgen / kloud-latmeter (this repo)
 

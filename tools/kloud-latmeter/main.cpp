@@ -15,17 +15,17 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
-// kloud-latmeter: NDI receiver that decodes kloud-testgen's strips and reports
+// kloud-latmeter: OMT receiver that decodes kloud-testgen's strips and reports
 // end-to-end latency, frame continuity, effective fps, and A/V sync offset.
 //
 // Latency = CLOCK_REALTIME(now) - wallclock strip (valid same-host, or across
-// PTP-synced hosts). A/V offset = tone-burst onset timecode - flash frame
-// timecode (sender-stamped, so it measures the NDI chain, not our receive).
+// PTP-synced hosts). A/V offset = tone-burst onset timestamp - flash frame
+// timestamp (sender-stamped, so it measures the OMT chain, not our receive).
 
 #include <algorithm>
 #include <cctype>
@@ -33,13 +33,16 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include "common/pattern.h"
 #include "core/Log.h"
 #include "core/MediaClock.h"
-#include "ndi/NdiLib.h"
+
+#include <libomt.h>
 
 namespace pat = kloud::pattern;
 
@@ -104,55 +107,41 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    if (!kloud::ndi::initialize()) return 1;
-
-    // -- discover the source --
-    NDIlib_find_create_t findDesc{};
-    findDesc.show_local_sources = true;
-    NDIlib_find_instance_t finder = NDIlib_find_create_v2(&findDesc);
-    if (!finder) {
-        KLOUD_LOGE("NDIlib_find_create_v2 failed");
-        return 1;
-    }
-
-    const std::string want = lower(opt.source);
-    NDIlib_source_t source{};
-    bool found = false;
-    const int64_t findDeadline =
-        kloud::MediaClock::nowNs() + int64_t(opt.findTimeout * 1e9);
-    while (!g_stop && !found && kloud::MediaClock::nowNs() < findDeadline) {
-        NDIlib_find_wait_for_sources(finder, 500);
-        uint32_t count = 0;
-        const NDIlib_source_t* list = NDIlib_find_get_current_sources(finder, &count);
-        for (uint32_t i = 0; i < count; ++i) {
-            if (lower(list[i].p_ndi_name).find(want) != std::string::npos) {
-                source = list[i];  // strings stay valid while finder lives
-                found = true;
-                break;
-            }
+    // -- discover the source. An explicit omt:// URL skips discovery. --
+    std::string address;
+    if (opt.source.rfind("omt://", 0) == 0) {
+        address = opt.source;
+    } else {
+        const std::string want = lower(opt.source);
+        const int64_t findDeadline =
+            kloud::MediaClock::nowNs() + int64_t(opt.findTimeout * 1e9);
+        while (!g_stop && address.empty() &&
+               kloud::MediaClock::nowNs() < findDeadline) {
+            int count = 0;
+            char** list = omt_discovery_getaddresses(&count);
+            for (int i = 0; list && i < count; ++i)
+                if (list[i] && lower(list[i]).find(want) != std::string::npos) {
+                    address = list[i];
+                    break;
+                }
+            if (address.empty())
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        if (address.empty()) {
+            KLOUD_LOGE("no OMT source matching '%s' within %.1fs",
+                     opt.source.c_str(), opt.findTimeout);
+            return 2;
         }
     }
-    if (!found) {
-        KLOUD_LOGE("no NDI source matching '%s' within %.1fs", opt.source.c_str(),
-                 opt.findTimeout);
-        NDIlib_find_destroy(finder);
-        kloud::ndi::destroy();
-        return 2;
-    }
-    KLOUD_LOGI("connecting to '%s'", source.p_ndi_name);
+    KLOUD_LOGI("connecting to '%s'", address.c_str());
 
-    NDIlib_recv_create_v3_t recvDesc{};
-    recvDesc.source_to_connect_to = source;
-    recvDesc.color_format = NDIlib_recv_color_format_fastest;  // UYVY
-    recvDesc.bandwidth = NDIlib_recv_bandwidth_highest;
-    recvDesc.allow_video_fields = false;
-    recvDesc.p_ndi_recv_name = "kloud-latmeter";
-    NDIlib_recv_instance_t recv = NDIlib_recv_create_v3(&recvDesc);
+    omt_receive_t* recv = omt_receive_create(
+        address.c_str(), OMTFrameType(OMTFrameType_Video | OMTFrameType_Audio),
+        OMTPreferredVideoFormat_UYVY, OMTReceiveFlags_None);
     if (!recv) {
-        KLOUD_LOGE("NDIlib_recv_create_v3 failed");
+        KLOUD_LOGE("omt_receive_create('%s') failed", address.c_str());
         return 1;
     }
-    NDIlib_find_destroy(finder);  // after recv holds its own copy of the source
 
     FILE* csv = nullptr;
     if (!opt.csvPath.empty()) {
@@ -187,16 +176,16 @@ int main(int argc, char** argv) {
     int64_t latCountAll = 0;
 
     while (!g_stop && (endNs == 0 || kloud::MediaClock::nowNs() < endNs)) {
-        NDIlib_video_frame_v2_t vf{};
-        NDIlib_audio_frame_v3_t af{};
-        const NDIlib_frame_type_e ft =
-            NDIlib_recv_capture_v3(recv, &vf, &af, nullptr, 500);
+        // libomt owns the returned frame; there is nothing to free. Video
+        // pointers survive a following audio receive, but not vice versa.
+        OMTMediaFrame* fr = omt_receive(
+            recv, OMTFrameType(OMTFrameType_Video | OMTFrameType_Audio), 500);
 
-        if (ft == NDIlib_frame_type_video) {
+        if (fr && fr->Type == OMTFrameType_Video && fr->Data) {
             ++totalFrames;
             ++winFrames;
-            const uint8_t* data = vf.p_data;
-            const int stride = vf.line_stride_in_bytes;
+            const uint8_t* data = static_cast<const uint8_t*>(fr->Data);
+            const int stride = fr->Stride;
 
             uint64_t counter = 0, sendNs = 0;
             const bool okC = pat::readStrip(data, stride, pat::kCounterRow, counter);
@@ -218,7 +207,6 @@ int main(int argc, char** argv) {
                     // during transitions; discard absurd timestamps.
                     ++totalBad;
                     ++winBad;
-                    NDIlib_recv_free_video_v2(recv, &vf);
                     continue;
                 }
                 winLatSum += latMs;
@@ -229,24 +217,24 @@ int main(int argc, char** argv) {
                 ++latCountAll;
 
                 if (pat::readFlash(data, stride)) {
-                    lastFlashT = vf.timecode;
+                    lastFlashT = fr->Timestamp;
                     if (std::abs(lastFlashT - lastOnsetT) < 5'000'000)  // 0.5 s
                         avOffsetMs = double(lastOnsetT - lastFlashT) / 1e4;
                 }
             }
-            NDIlib_recv_free_video_v2(recv, &vf);
-        } else if (ft == NDIlib_frame_type_audio) {
-            if (af.FourCC == NDIlib_FourCC_audio_type_FLTP && af.no_channels > 0) {
+        } else if (fr && fr->Type == OMTFrameType_Audio) {
+            if (fr->Codec == OMTCodec_FPA1 && fr->Channels > 0 && fr->Data) {
                 // Onset detect with a hold zone: the burst is a sine ramping
                 // from zero, so early samples sit between the quiet (0.05)
                 // and trigger (0.15) thresholds and must not disarm us.
-                const float* ch0 = reinterpret_cast<const float*>(af.p_data);
-                for (int i = 0; i < af.no_samples; ++i) {
+                const float* ch0 = static_cast<const float*>(fr->Data);
+                for (int i = 0; i < fr->SamplesPerChannel; ++i) {
                     const float x = std::fabs(ch0[i]);
                     if (x > 0.15f) {
                         if (quietRun > pat::kSampleRate / 20) {  // >=50ms quiet
                             lastOnsetT =
-                                af.timecode + int64_t(i) * 10'000'000 / pat::kSampleRate;
+                                fr->Timestamp +
+                                int64_t(i) * 10'000'000 / pat::kSampleRate;
                             if (std::abs(lastFlashT - lastOnsetT) < 5'000'000)
                                 avOffsetMs = double(lastOnsetT - lastFlashT) / 1e4;
                         }
@@ -256,7 +244,6 @@ int main(int argc, char** argv) {
                     }  // else: ramp zone, hold state
                 }
             }
-            NDIlib_recv_free_audio_v3(recv, &af);
         }
 
         const int64_t nowNs = kloud::MediaClock::nowNs();
@@ -289,8 +276,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    NDIlib_recv_destroy(recv);
-    kloud::ndi::destroy();
+    omt_receive_destroy(recv);
 
     KLOUD_LOGI("summary: frames=%lld gaps=%lld bad=%lld lat_avg=%.2fms av=%+.2fms",
              (long long)totalFrames, (long long)totalGaps, (long long)totalBad,

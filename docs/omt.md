@@ -1,8 +1,10 @@
 # OMT (Open Media Transport) input
 
-8Kloud Switcher can ingest OMT sources (vMix's open, MIT-licensed NDI
-alternative — VMX intra codec over TCP, mDNS discovery). Support is
-optional: CMake enables it when `third_party/omt/` is populated.
+OMT (vMix's open, MIT-licensed transport — VMX intra codec over TCP, mDNS
+discovery) is 8Kloud Switcher's network transport, used for both input and
+the program/clean senders. Support is optional at build time: CMake enables
+it when `third_party/omt/` is populated, and without it there is no OMT
+input or program output.
 
 ## Getting the libraries
 
@@ -39,14 +41,15 @@ from the same directory (rpath is wired by CMake).
 
 - Headless: `kloud-headless --omt-input "HOSTNAME (Name)"` (discovery name)
   or `--omt-input omt://host:port` (direct, senders bind from 6400 up).
-- GUI source picker: the discovery list shows NDI and OMT sources together
-  (badged `NDI`/`OMT`; the row carries its type, so bare OMT names never
-  get misread as NDI substrings — first open may need one Refresh while
+- GUI source picker: the discovery list shows OMT sources and DeckLink cards
+  (badged `OMT`/`SDI`; each row carries its type and ref — first open may
+  need one Refresh while
   mDNS answers arrive). The manual field accepts `omt://host:port` and
-  `srt://` URLs; bare manual text stays an NDI name substring. Show files
+  `srt://` URLs; bare manual text is taken as an OMT discovery name, which
+  must be the full `HOSTNAME (Name)` form. Show files
   store the true type (`type=omt`) for round-trip fidelity.
 - Frame sync (`--framesync IDX[:N]`, per-input GUI checkbox) works on OMT
-  inputs; sender timestamps are 100 ns units like NDI's and get the same
+  inputs; sender timestamps are 100 ns units and get the same
   cadence sanity check + synthesized-pts fallback.
 - Test sender: `kloud-testgen --omt [--noise] [--size WxH]` (VMX encode
   happens in-process; the 5 s stats line reports encoder ms/frame, Mbps,

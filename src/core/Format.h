@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <cstddef>
@@ -26,7 +26,7 @@
 
 namespace kloud {
 
-// UYVA8_4224: UYVY plane followed by a full-res 8-bit alpha plane (NDI/OMT
+// UYVA8_4224: UYVY plane followed by a full-res 8-bit alpha plane (OMT
 // native alpha). P216 lands in v1.1.
 enum class PixFmt : uint8_t { UYVY8_422 = 0, NV12 = 1, UYVA8_4224 = 2 };
 enum class Colorimetry : uint8_t { BT709 = 0, BT601 = 1 };
@@ -53,7 +53,8 @@ struct VideoFormatDesc {
     // Staging offset of the appended alpha plane (UYVA only).
     size_t alphaOffset() const { return size_t(width) * 2 * height; }
 
-    // SD content is overwhelmingly BT.601; HD+ is BT.709. NDI does not signal
+    // SD content is overwhelmingly BT.601; HD+ is BT.709. The transports do
+    // not reliably signal
     // colorimetry per frame, so the standard heuristic applies.
     static Colorimetry colorimetryForHeight(int h) {
         return h < 720 ? Colorimetry::BT601 : Colorimetry::BT709;

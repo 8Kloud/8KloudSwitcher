@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <atomic>
@@ -46,7 +46,7 @@ namespace kloud {
 //
 // Unlike the network inputs there is no capture thread of our own: the SDK
 // delivers frames on its own callback thread and we do the staging copy +
-// upload submit there, exactly the work NdiReceiver/OmtInput do on theirs. An
+// upload submit there, exactly the work OmtInput does on its own. An
 // open thread runs only to (re)open the device when it is absent or busy.
 //
 // Frame sync gets a real hardware clock here: GetHardwareReferenceTimestamp is

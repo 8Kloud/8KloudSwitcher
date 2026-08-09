@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "out/SrtOutput.h"
 
@@ -74,7 +74,7 @@ void SrtOutput::pushAudio(const float* lr, int frames, int64_t firstSample) {
     // encodeLoop), but the frame pipeline's true emission lag is ~1.5 ticks.
     // Rather than fractional video pts, shift audio the remaining half tick
     // (400 samples = 8.33 ms). Measured flash+tone 1080p: SRT av moves from
-    // -12 ms to ~-4 ms, NDI path untouched.
+    // -12 ms to ~-4 ms, the network-sender path untouched.
     constexpr int64_t kAudioPtsBiasSamples = 400;
     aacScratch_.clear();
     if (!aac_.encode(lr, frames, firstSample + kAudioPtsBiasSamples,
@@ -115,10 +115,10 @@ void SrtOutput::encodeLoop(std::stop_token st) {
         pkts.clear();
         // pts = tick + 1: the frame composited at tick n is packed/readable
         // no earlier than tick n+1, while the mixer emits audio for a wall
-        // moment within 10 ms. Stamping emission time (like the NDI output's
+        // moment within 10 ms. Stamping emission time (like the OMT output's
         // synthesized timecodes) keeps both outputs' A/V skew centered by
         // the same master delay. Measured flash+tone, 1080p: without this
-        // the SRT path reads ~1.5 ticks audio-late vs the NDI path.
+        // the SRT path reads ~1.5 ticks audio-late vs the OMT path.
         if (enc_->encode(imports_[e.fif].ptr, e.tick + 1, pkts)) {
             copied_[e.fif].store(e.value, std::memory_order_release);
             encoded_.fetch_add(1, std::memory_order_relaxed);

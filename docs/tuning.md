@@ -2,12 +2,12 @@
 
 The switcher itself needs no tuning for same-host validation (see
 `docs/bench-m5.md`: full 8K pipeline < 2 cores, zero overruns untuned).
-This page is for **remote** NDI/SRT at high bitrates and for hosts with
+This page is for **remote** OMT/SRT at high bitrates and for hosts with
 less headroom.
 
 ## Network buffers (needs sudo)
 
-Remote 8K NDI is 1–2.5 Gbps; SRT at 120 ms latency wants deep buffers.
+Remote 8K is 1–2.5 Gbps; SRT at 120 ms latency wants deep buffers.
 Defaults on Arch (4 MB rmem_max) drop bursts long before the wire is full.
 
 ```sh
@@ -21,46 +21,43 @@ Leave `maxbw` unset (libsrt's live-mode default ~1 Gbps cap is fine for
 
 ## Same-host topology limits (measured, 9900X + RTX 5090)
 
-Same-host NDI is uncompressed shared memory: every 8K60 hop moves ~4 GB/s
-of pixels through system RAM. This box sustains **one full 8K pipeline**
-(testgen → switcher → NDI out + SRT out → latmeter ≈ 5 streams ≈ 20 GB/s)
-cleanly. Two 8K inputs *plus* an 8K NDI out *plus* a local 8K receiver
-saturates memory bandwidth (stale frames, gaps). For 2×8K production use,
-source cameras from the network, not from local senders — the plan's
-two-box topology.
+Every 8K60 hop moves ~4 GB/s of pixels through system RAM. This box
+sustains **one full 8K pipeline** (testgen → switcher → OMT out + SRT out
+→ latmeter ≈ 5 streams ≈ 20 GB/s) cleanly. Two 8K inputs *plus* an 8K
+network out *plus* a local 8K receiver saturates memory bandwidth (stale
+frames, gaps). For 2×8K production use, source cameras from the network
+or from SDI, not from local senders — the plan's two-box topology.
 
 ## CPU affinity
 
 Not needed at current load (render+mixer+capture < 2 cores of 24, zero
 overruns in the 30-min soak). If a smaller host shows `render.skips` or
 `audio.skips` in the counters, pin the noisy neighbors (browsers,
-compilers) away from the app rather than pinning the app: the NDI SDK
-manages its own thread pool and reacts badly to a shrunken cpuset.
+compilers) away from the app rather than pinning the app: libomt runs a
+.NET thread pool and reacts badly to a shrunken cpuset.
 
-## SpeedHQ codec budgets (measured — see docs/bench-m5.md)
+## Codec budgets
 
-Same-host NDI is compressed too (NDI 6.3.2: senders encode every frame,
-always; local receivers decode) — don't assume local hops are free. With
-worst-case content (`kloud-testgen --noise`):
+OMT/VMX encodes on the sending thread and decodes on the receiving one,
+so neither direction is free. Measurements for OMT at each resolution,
+including the 8K ingest ceiling, are in `docs/bench-omt.md`; the OMT
+build steps are in `docs/omt.md`.
 
-- 1080p: ~0.25 core encode, ~0.5 core decode, ~0.5 Gbps. Comfortable.
-- 4K (interpolated): ~1 core encode, ~2 cores decode worst-case. Fine.
-- **8K: not viable as NDI ingest** — decode needs ~4 cores and still
-  drops frames; the same-host local channel stalls outright. Use
-  SRT/HEVC (NVDEC) for 8K ingest, and prefer the 4K-proxy NDI out +
-  native-8K SRT out shape for delivery. Our 8K NDI program out itself
-  is fine (~2 cores with realistic content), but worst-case content
-  is ~5.8 Gbps on the wire — mind the 10 GbE link.
+For 8K ingest prefer SRT/HEVC (NVDEC) or SDI, both of which cost no CPU
+to decode. `docs/bench-m5.md` records the equivalent budgets for the NDI
+path this project used before v1.1; it is kept for the pipeline numbers,
+not as current transport advice.
 
-Re-run the bench anytime: `sudo scripts/ndi-netns-bench.sh up && sudo
-scripts/ndi-netns-bench.sh bench`, then measure with
-`scripts/cpu_sample.py`; `sudo scripts/ndi-netns-bench.sh down` when done.
+Re-run the codec bench anytime with `scripts/bench_codec.sh` and
+measure with `scripts/cpu_sample.py`. Same-host runs measure the
+loopback path; run the sender and receiver on two machines to measure
+what actually goes on the wire.
 
 ## Clock discipline
 
-NDI timecodes ride the realtime clock; NTP slew (systemd-timesyncd,
-chrony) shows up as a few ppm of apparent A/V drift in
-timecode-comparing measurements and in timestamp-driven playout over
-hours. The pipeline itself is locked to CLOCK_MONOTONIC and does not
-drift. If downstream playout syncs by NDI timestamps across hours, use
-PTP instead of NTP.
+The pipeline is locked to CLOCK_MONOTONIC and does not drift, and the
+OMT senders stamp video and audio from that same clock. Measurement
+tools that compare against CLOCK_REALTIME (`kloud-latmeter`'s latency
+column, `scripts/av_offset_ts.py`) do see NTP slew — a few ppm of
+apparent drift under systemd-timesyncd or chrony. Use PTP instead of NTP
+when a measurement has to hold across hours.

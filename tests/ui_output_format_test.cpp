@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -78,8 +78,8 @@ TEST_CASE("show file preserves the exact output format") {
     saved.cfg.show.height = 2160;
     saved.cfg.show.fpsN = 24000;
     saved.cfg.show.fpsD = 1001;
-    saved.cfg.cleanNdiOut = true;
-    saved.cfg.cleanNdiOutName = "8Kloud Switcher CLEAN TEST";
+    saved.cfg.cleanOmtOut = true;
+    saved.cfg.cleanOmtOutName = "8Kloud Switcher CLEAN TEST";
     file.save(saved);
 
     ShowFile::State restored;
@@ -88,8 +88,8 @@ TEST_CASE("show file preserves the exact output format") {
     CHECK(restored.cfg.show.height == 2160);
     CHECK(restored.cfg.show.fpsN == 24000);
     CHECK(restored.cfg.show.fpsD == 1001);
-    CHECK(restored.cfg.cleanNdiOut);
-    CHECK(restored.cfg.cleanNdiOutName == "8Kloud Switcher CLEAN TEST");
+    CHECK(restored.cfg.cleanOmtOut);
+    CHECK(restored.cfg.cleanOmtOutName == "8Kloud Switcher CLEAN TEST");
 }
 
 TEST_CASE("show file restores playlists, trim, speed, and loop mode") {

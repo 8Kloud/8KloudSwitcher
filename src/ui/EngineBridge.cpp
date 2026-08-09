@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "ui/EngineBridge.h"
 
@@ -100,12 +100,11 @@ void EngineBridge::replaceInput(int input, QString ref, int syncFrames,
         type >= 0 && type <= int(InputSpec::Type::DeckLink)
             ? InputSpec::Type(type)
         : r.rfind("srt://", 0) == 0   ? InputSpec::Type::Srt
-        : r.rfind("omt://", 0) == 0   ? InputSpec::Type::Omt
         : isDeckLinkRef(r)            ? InputSpec::Type::DeckLink
         : QFileInfo(ref).isFile()
             ? (media::isStillImagePath(r) ? InputSpec::Type::Still
                                           : InputSpec::Type::Media)
-                                      : InputSpec::Type::Ndi;
+                                      : InputSpec::Type::Omt;
     engine_.requestInputReplace(input, {t, r, syncFrames});
 }
 
@@ -142,13 +141,6 @@ int EngineBridge::audioAutoTrimMs(int input) const {
     return c ? c->autoDelayFrames.load(std::memory_order_relaxed) *
                    1000 / audio::kSampleRate
              : 0;
-}
-
-QStringList EngineBridge::ndiSourceNames() const {
-    QStringList out;
-    for (const auto& s : engine_.ndiSources())
-        out << QString::fromStdString(s.name);
-    return out;
 }
 
 QStringList EngineBridge::omtSourceNames() const {
@@ -220,13 +212,13 @@ void EngineBridge::poll() {
         emit audioLevels(lv);
     }
 
-    QString status = QStringLiteral("ticks %1  skips %2  ndi-out %3")
+    QString status = QStringLiteral("ticks %1  skips %2  omt-out %3")
                          .arg(engine_.renderedTicks())
                          .arg(engine_.skippedTicks())
-                         .arg(engine_.ndiOutFrames());
-    if (engine_.cleanNdiOutFrames())
-        status += QStringLiteral("  clean-ndi %1")
-                      .arg(engine_.cleanNdiOutFrames());
+                         .arg(engine_.omtOutFrames());
+    if (engine_.cleanOmtOutFrames())
+        status += QStringLiteral("  clean-omt %1")
+                      .arg(engine_.cleanOmtOutFrames());
     if (auto* a = engine_.audio())
         status += QStringLiteral("  aud[sk %1 un %2]")
                       .arg(a->mixSkips())

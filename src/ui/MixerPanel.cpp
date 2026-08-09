@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "ui/MixerPanel.h"
 
@@ -61,8 +61,8 @@ QString shortSourceName(QString ref) {
     return ref.isEmpty() ? QStringLiteral("BLACK") : ref;
 }
 
-// Pick an NDI/OMT source from discovery or type an NDI name substring /
-// srt:// / omt:// URL. Discovery rows carry their type in item data --
+// Pick an OMT/SDI source from discovery, or type an OMT name / omt:// /
+// srt:// / decklink:// ref. Discovery rows carry their type in item data --
 // OMT names have no scheme, so text alone cannot distinguish them.
 class SourcePickerDialog : public QDialog {
 public:
@@ -231,8 +231,9 @@ public:
 
     // -1 = infer from the ref (manual entry); explicit for discovery rows.
     int chosenType() const {
-        if (mediaChosen_ && playlist_->count() > 0) return 3;
-        if (stillChosen_) return 4;
+        if (mediaChosen_ && playlist_->count() > 0)
+            return int(InputSpec::Type::Media);
+        if (stillChosen_) return int(InputSpec::Type::Still);
         if (!manual_->text().trimmed().isEmpty()) return -1;
         if (auto* item = list_->currentItem())
             return item->data(kTypeRole).toInt();
@@ -256,11 +257,14 @@ public:
     }
 
 private:
-    void addSource(const QString& name, int type, const QString& badge) {
+    // `name` is what the operator sees, `ref` what the engine is handed --
+    // they differ for SDI, whose label is the card name and ref decklink://N.
+    void addSource(const QString& name, InputSpec::Type type,
+                   const QString& badge, const QString& ref) {
         auto* item = new QListWidgetItem(
             QStringLiteral("%1     %2").arg(badge, name));
-        item->setData(kTypeRole, type);
-        item->setData(kNameRole, name);
+        item->setData(kTypeRole, int(type));
+        item->setData(kNameRole, ref);
         list_->addItem(item);
     }
 
@@ -377,10 +381,11 @@ private:
 
     void refresh() {
         list_->clear();
-        for (const QString& name : bridge_.ndiSourceNames())
-            addSource(name, 0, QStringLiteral("NDI"));
         for (const QString& name : bridge_.omtSourceNames())
-            addSource(name, 2, QStringLiteral("OMT"));
+            addSource(name, InputSpec::Type::Omt, QStringLiteral("OMT"), name);
+        for (const auto& [label, ref] : bridge_.decklinkSources())
+            addSource(label, InputSpec::Type::DeckLink, QStringLiteral("SDI"),
+                      ref);
         if (list_->count() == 0) {
             auto* empty = new QListWidgetItem(
                 QStringLiteral("No discovered sources · manual entry is still available"));

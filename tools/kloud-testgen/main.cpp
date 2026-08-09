@@ -15,18 +15,19 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
-// kloud-testgen: NDI test-pattern sender with machine-readable latency strips.
+// kloud-testgen: OMT test-pattern sender with machine-readable latency strips.
 //
 // Emits UYVY color bars with a moving bar, a 64-bit frame counter strip, a
 // send-wallclock strip (CLOCK_REALTIME ns), a flash region + 1 kHz tone burst
 // every 60 frames (A/V sync measurement), and stereo FLTP audio.
-// Paced by MediaClock (rational fps, no drift); video is sent with
-// NDIlib_send_send_video_async_v2 over a ring of precomputed frames.
+// Paced by MediaClock (rational fps, no drift); video is sent with omt_send
+// over a ring of precomputed frames (omt_send VMX-encodes from our memory in
+// the call, so a slot is reusable the moment it returns).
 
 #include <algorithm>
 #include <cmath>
@@ -39,10 +40,8 @@
 #include "common/pattern.h"
 #include "core/Log.h"
 #include "core/MediaClock.h"
-#include "ndi/NdiLib.h"
-#ifdef KLOUD_HAVE_OMT
+
 #include <libomt.h>
-#endif
 
 namespace pat = kloud::pattern;
 
@@ -63,7 +62,6 @@ struct Options {
     bool quiet = false;
     bool noise = false;  // worst-case codec content instead of bars
     bool mid = false;    // mid-entropy content (random flat 8x8 blocks)
-    bool omt = false;    // send via OMT (VMX) instead of NDI
     bool uyva = false;    // append an alpha plane (lower-third key graphic)
     bool premult = false; // premultiply fill by alpha (OMT signals the flag)
 };
@@ -113,13 +111,6 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.noise = true;
         } else if (a == "--mid") {
             o.mid = true;
-        } else if (a == "--omt") {
-#ifdef KLOUD_HAVE_OMT
-            o.omt = true;
-#else
-            fprintf(stderr, "built without OMT support\n");
-            return false;
-#endif
         } else if (a == "--uyva") {
             o.uyva = true;
         } else if (a == "--premult") {
@@ -131,7 +122,7 @@ bool parseArgs(int argc, char** argv, Options& o) {
             fprintf(stderr,
                     "usage: kloud-testgen [--name S] [--size WxH] [--fps N/D|F]\n"
                     "                   [--precompute K] [--duration SECS]\n"
-                    "                   [--no-audio] [--noise] [--mid] [--omt]\n"
+                    "                   [--no-audio] [--noise] [--mid]\n"
                     "                   [--uyva] [--premult] [--quiet]\n"
                     "  --uyva: alpha plane (lower-third band; strips opaque)\n"
                     "  --premult: premultiplied fill (flag signaled on OMT only)\n");
@@ -159,32 +150,16 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    NDIlib_send_instance_t sender = nullptr;
-#ifdef KLOUD_HAVE_OMT
-    omt_send_t* omtSender = nullptr;
-#endif
-    if (opt.omt) {
-#ifdef KLOUD_HAVE_OMT
-        omtSender = omt_send_create(opt.name.c_str(), OMTQuality_Default);
-        if (!omtSender) {
-            KLOUD_LOGE("omt_send_create failed");
-            return 1;
-        }
-        char addr[512] = {};
+    omt_send_t* omtSender =
+        omt_send_create(opt.name.c_str(), OMTQuality_Default);
+    if (!omtSender) {
+        KLOUD_LOGE("omt_send_create failed");
+        return 1;
+    }
+    {
+        char addr[OMT_MAX_STRING_LENGTH] = {};
         omt_send_getaddress(omtSender, addr, sizeof addr);
         KLOUD_LOGI("OMT sender: %s", addr);
-#endif
-    } else {
-        if (!kloud::ndi::initialize()) return 1;
-        NDIlib_send_create_t sendDesc{};
-        sendDesc.p_ndi_name = opt.name.c_str();
-        sendDesc.clock_video = false;  // we pace with MediaClock
-        sendDesc.clock_audio = false;
-        sender = NDIlib_send_create(&sendDesc);
-        if (!sender) {
-            KLOUD_LOGE("NDIlib_send_create failed");
-            return 1;
-        }
     }
 
     const int strideBytes = opt.width * 2;
@@ -193,8 +168,8 @@ int main(int argc, char** argv) {
         (opt.uyva ? size_t(opt.width) * opt.height : 0);
 
     // Precomputed frame ring: bars + moving bar baked per slot; strips and the
-    // flash region get stamped per send. K >= 2 keeps the async-held buffer
-    // (previous frame) untouched while we stamp the current slot.
+    // flash region get stamped per send. K >= 2 keeps a slot spare so a
+    // stamped frame is never the one just handed to the encoder.
     int K = opt.precompute;
     if (K <= 0) K = int(1'500'000'000 / frameBytes);
     K = std::max(2, std::min(K, 60));
@@ -241,16 +216,22 @@ int main(int argc, char** argv) {
     const int64_t t0Real = realtimeNs();
     clock.start();
 
-    NDIlib_video_frame_v2_t vf{};
-    vf.xres = opt.width;
-    vf.yres = opt.height;
-    vf.FourCC = opt.uyva ? NDIlib_FourCC_video_type_UYVA
-                         : NDIlib_FourCC_video_type_UYVY;
-    vf.frame_rate_N = int(opt.fpsN);
-    vf.frame_rate_D = int(opt.fpsD);
-    vf.picture_aspect_ratio = 0;  // square pixels
-    vf.frame_format_type = NDIlib_frame_format_type_progressive;
-    vf.line_stride_in_bytes = strideBytes;
+    OMTMediaFrame ovf{};
+    ovf.Type = OMTFrameType_Video;
+    ovf.Codec = opt.uyva ? OMTCodec_UYVA : OMTCodec_UYVY;
+    if (opt.uyva)  // without _Alpha libomt encodes plain UYVY
+        ovf.Flags = OMTVideoFlags(
+            OMTVideoFlags_Alpha |
+            (opt.premult ? OMTVideoFlags_PreMultiplied : 0));
+    ovf.Width = opt.width;
+    ovf.Height = opt.height;
+    ovf.Stride = strideBytes;
+    ovf.FrameRateN = int(opt.fpsN);
+    ovf.FrameRateD = int(opt.fpsD);
+    ovf.AspectRatio = float(opt.width) / float(opt.height);
+    ovf.ColorSpace =
+        opt.height < 720 ? OMTColorSpace_BT601 : OMTColorSpace_BT709;
+    ovf.DataLength = int(frameBytes);
 
     const int64_t maxTicks =
         opt.duration > 0 ? int64_t(opt.duration * opt.fpsN / opt.fpsD) + 1 : 0;
@@ -270,41 +251,13 @@ int main(int argc, char** argv) {
         pat::stampStrip(frame, strideBytes, pat::kTimeRow, uint64_t(realtimeNs()));
         pat::stampFlash(frame, strideBytes, n % pat::kFlashPeriodTicks == 0);
 
-        if (opt.omt) {
-#ifdef KLOUD_HAVE_OMT
-            OMTTally t{};
-            omt_send_gettally(omtSender, 0, &t);
-            pat::stampTally(frame, strideBytes, t.program != 0, t.preview != 0);
+        OMTTally t{};
+        omt_send_gettally(omtSender, 0, &t);
+        pat::stampTally(frame, strideBytes, t.program != 0, t.preview != 0);
 
-            OMTMediaFrame ovf = {};
-            ovf.Type = OMTFrameType_Video;
-            ovf.Codec = opt.uyva ? OMTCodec_UYVA : OMTCodec_UYVY;
-            if (opt.uyva)  // without _Alpha libomt encodes plain UYVY
-                ovf.Flags = OMTVideoFlags(
-                    OMTVideoFlags_Alpha |
-                    (opt.premult ? OMTVideoFlags_PreMultiplied : 0));
-            ovf.Width = opt.width;
-            ovf.Height = opt.height;
-            ovf.Stride = strideBytes;
-            ovf.FrameRateN = int(opt.fpsN);
-            ovf.FrameRateD = int(opt.fpsD);
-            ovf.AspectRatio = float(opt.width) / float(opt.height);
-            ovf.ColorSpace = opt.height < 720 ? OMTColorSpace_BT601
-                                              : OMTColorSpace_BT709;
-            ovf.Timestamp = (t0Real + ideal.nsForTick(n)) / 100;  // 100ns units
-            ovf.Data = frame;
-            ovf.DataLength = int(frameBytes);
-            omt_send(omtSender, &ovf);  // VMX encode happens in this call
-#endif
-        } else {
-            NDIlib_tally_t tally{};
-            NDIlib_send_get_tally(sender, &tally, 0);
-            pat::stampTally(frame, strideBytes, tally.on_program, tally.on_preview);
-
-            vf.p_data = frame;
-            vf.timecode = (t0Real + ideal.nsForTick(n)) / 100;  // 100ns units
-            NDIlib_send_send_video_async_v2(sender, &vf);  // blocks only if encoder is behind
-        }
+        ovf.Timestamp = (t0Real + ideal.nsForTick(n)) / 100;  // 100ns units
+        ovf.Data = frame;
+        omt_send(omtSender, &ovf);  // VMX encode happens in this call
         ++sent;
         ++windowFrames;
 
@@ -318,32 +271,17 @@ int main(int argc, char** argv) {
                 audioBuf[size_t(i)] = v;
                 audioBuf[size_t(count + i)] = v;
             }
-            if (opt.omt) {
-#ifdef KLOUD_HAVE_OMT
-                OMTMediaFrame oaf = {};
-                oaf.Type = OMTFrameType_Audio;
-                oaf.Codec = OMTCodec_FPA1;
-                oaf.SampleRate = pat::kSampleRate;
-                oaf.Channels = 2;
-                oaf.SamplesPerChannel = count;
-                oaf.Timestamp =
-                    (t0Real + s0 * 1'000'000'000 / pat::kSampleRate) / 100;
-                oaf.Data = audioBuf.data();
-                oaf.DataLength = count * 2 * int(sizeof(float));
-                omt_send(omtSender, &oaf);
-#endif
-            } else {
-                NDIlib_audio_frame_v3_t af{};
-                af.sample_rate = pat::kSampleRate;
-                af.no_channels = 2;
-                af.no_samples = count;
-                af.timecode =
-                    (t0Real + s0 * 1'000'000'000 / pat::kSampleRate) / 100;
-                af.FourCC = NDIlib_FourCC_audio_type_FLTP;
-                af.p_data = reinterpret_cast<uint8_t*>(audioBuf.data());
-                af.channel_stride_in_bytes = count * int(sizeof(float));
-                NDIlib_send_send_audio_v3(sender, &af);
-            }
+            OMTMediaFrame oaf{};
+            oaf.Type = OMTFrameType_Audio;
+            oaf.Codec = OMTCodec_FPA1;
+            oaf.SampleRate = pat::kSampleRate;
+            oaf.Channels = 2;
+            oaf.SamplesPerChannel = count;
+            oaf.Timestamp =
+                (t0Real + s0 * 1'000'000'000 / pat::kSampleRate) / 100;
+            oaf.Data = audioBuf.data();
+            oaf.DataLength = count * 2 * int(sizeof(float));
+            omt_send(omtSender, &oaf);
             samplesSent += count;
         }
 
@@ -358,39 +296,23 @@ int main(int argc, char** argv) {
 
         const int64_t nowNs = kloud::MediaClock::nowNs();
         if (!opt.quiet && nowNs - windowStartNs >= 5'000'000'000) {
-#ifdef KLOUD_HAVE_OMT
-            if (opt.omt) {
-                OMTStatistics st{};
-                omt_send_getvideostatistics(omtSender, &st);
-                KLOUD_LOGI("sent=%lld fps=%.2f skipped=%lld omt[frames=%lld "
-                         "dropped=%lld enc_ms/f=%.2f mbps=%.1f]",
-                         (long long)sent,
-                         windowFrames * 1e9 / double(nowNs - windowStartNs),
-                         (long long)skipped, (long long)st.Frames,
-                         (long long)st.FramesDropped,
-                         st.Frames ? double(st.CodecTime) / double(st.Frames)
-                                   : 0.0,
-                         double(st.BytesSentSinceLast) * 8.0 /
-                             double(nowNs - windowStartNs) * 1e3);
-            } else
-#endif
-                KLOUD_LOGI("sent=%lld fps=%.2f skipped=%lld", (long long)sent,
-                         windowFrames * 1e9 / double(nowNs - windowStartNs),
-                         (long long)skipped);
+            OMTStatistics st{};
+            omt_send_getvideostatistics(omtSender, &st);
+            KLOUD_LOGI("sent=%lld fps=%.2f skipped=%lld omt[frames=%lld "
+                     "dropped=%lld enc_ms/f=%.2f mbps=%.1f]",
+                     (long long)sent,
+                     windowFrames * 1e9 / double(nowNs - windowStartNs),
+                     (long long)skipped, (long long)st.Frames,
+                     (long long)st.FramesDropped,
+                     st.Frames ? double(st.CodecTime) / double(st.Frames) : 0.0,
+                     double(st.BytesSentSinceLast) * 8.0 /
+                         double(nowNs - windowStartNs) * 1e3);
             windowStartNs = nowNs;
             windowFrames = 0;
         }
     }
 
-    if (opt.omt) {
-#ifdef KLOUD_HAVE_OMT
-        omt_send_destroy(omtSender);
-#endif
-    } else {
-        NDIlib_send_send_video_async_v2(sender, nullptr);  // release last async buffer
-        NDIlib_send_destroy(sender);
-        kloud::ndi::destroy();
-    }
+    omt_send_destroy(omtSender);
     KLOUD_LOGI("done: sent=%lld skipped=%lld audio_samples=%lld", (long long)sent,
              (long long)skipped, (long long)samplesSent);
     return 0;

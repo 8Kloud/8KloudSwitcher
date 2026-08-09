@@ -1,7 +1,12 @@
 # Downstream keyers (feature K, v2) — design & implementation notes
 
+> **Note.** Written while NDI was the network transport. It was removed in
+> v1.1 (OMT/SDI/SRT only); references to NDI below describe the sources the
+> measurements were taken against. The design and the mechanics it
+> describes are transport-independent and unchanged.
+
 Two DSK layers composited over the A/B program mix, keyed from **native
-alpha inputs** (NDI/OMT UYVA or local raster stills). Shipped across K1
+alpha inputs** (OMT UYVA or local raster stills). Shipped across K1
 (UYVA ingest), K2 (engine/shader), K3 (GUI/persistence), with static
 PNG/WebP-style inputs added by the media layer. Bench: `bench-dsk.md`.
 K4 follow-ups (2026-07-19): look-ahead preview, tie-to-transition,

@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "ui/ShowFile.h"
 
@@ -40,10 +40,10 @@ bool ShowFile::State::cfgEquals(const EngineConfig& a, const EngineConfig& b) {
             a.inputs[i].mediaLoop != b.inputs[i].mediaLoop ||
             a.inputs[i].mediaPlaylist != b.inputs[i].mediaPlaylist)
             return false;
-    return a.show == b.show && a.ndiOut == b.ndiOut &&
-           a.ndiOutName == b.ndiOutName &&
-           a.cleanNdiOut == b.cleanNdiOut &&
-           a.cleanNdiOutName == b.cleanNdiOutName &&
+    return a.show == b.show && a.omtOut == b.omtOut &&
+           a.omtOutName == b.omtOutName &&
+           a.cleanOmtOut == b.cleanOmtOut &&
+           a.cleanOmtOutName == b.cleanOmtOutName &&
            a.srtUrl == b.srtUrl &&
            a.srtBitrateKbps == b.srtBitrateKbps &&
            a.recordBitrateKbps == b.recordBitrateKbps && a.audio == b.audio &&
@@ -75,16 +75,16 @@ bool ShowFile::load(State& st) const {
         st.cfg.show.fpsN = fpsN;
         st.cfg.show.fpsD = fpsD;
     }
-    st.cfg.ndiOut = s.value("ndiOut", st.cfg.ndiOut).toBool();
-    st.cfg.ndiOutName =
-        s.value("ndiOutName", QString::fromStdString(st.cfg.ndiOutName))
+    st.cfg.omtOut = s.value("omtOut", st.cfg.omtOut).toBool();
+    st.cfg.omtOutName =
+        s.value("omtOutName", QString::fromStdString(st.cfg.omtOutName))
             .toString()
             .toStdString();
-    st.cfg.cleanNdiOut =
-        s.value("cleanNdiOut", st.cfg.cleanNdiOut).toBool();
-    st.cfg.cleanNdiOutName =
-        s.value("cleanNdiOutName",
-                QString::fromStdString(st.cfg.cleanNdiOutName))
+    st.cfg.cleanOmtOut =
+        s.value("cleanOmtOut", st.cfg.cleanOmtOut).toBool();
+    st.cfg.cleanOmtOutName =
+        s.value("cleanOmtOutName",
+                QString::fromStdString(st.cfg.cleanOmtOutName))
             .toString()
             .toStdString();
     st.cfg.srtUrl = s.value("srtOut", QString::fromStdString(st.cfg.srtUrl))
@@ -104,16 +104,18 @@ bool ShowFile::load(State& st) const {
     for (int i = 0; i < n; ++i) {
         s.setArrayIndex(i);
         InputSpec spec;
+        // Unknown types (notably "ndi" from a pre-OMT show) fall through to
+        // OMT: the ref will not resolve, so the input stays black until the
+        // operator re-patches it.
         const QString type = s.value("type").toString();
-        spec.type = type == QStringLiteral("srt")   ? InputSpec::Type::Srt
-                    : type == QStringLiteral("omt") ? InputSpec::Type::Omt
+        spec.type = type == QStringLiteral("srt") ? InputSpec::Type::Srt
                     : type == QStringLiteral("decklink")
                         ? InputSpec::Type::DeckLink
                     : type == QStringLiteral("media")
                         ? InputSpec::Type::Media
                     : type == QStringLiteral("still")
                         ? InputSpec::Type::Still
-                                                    : InputSpec::Type::Ndi;
+                                                  : InputSpec::Type::Omt;
         spec.ref = s.value("ref").toString().toStdString();
         // Absent in v1 show files -> stays off (-1).
         spec.syncFrames = s.value("framesync", spec.syncFrames).toInt();
@@ -194,11 +196,11 @@ void ShowFile::save(const State& st) const {
     s.setValue("height", st.cfg.show.height);
     s.setValue("fpsN", qlonglong(st.cfg.show.fpsN));
     s.setValue("fpsD", qlonglong(st.cfg.show.fpsD));
-    s.setValue("ndiOut", st.cfg.ndiOut);
-    s.setValue("ndiOutName", QString::fromStdString(st.cfg.ndiOutName));
-    s.setValue("cleanNdiOut", st.cfg.cleanNdiOut);
-    s.setValue("cleanNdiOutName",
-               QString::fromStdString(st.cfg.cleanNdiOutName));
+    s.setValue("omtOut", st.cfg.omtOut);
+    s.setValue("omtOutName", QString::fromStdString(st.cfg.omtOutName));
+    s.setValue("cleanOmtOut", st.cfg.cleanOmtOut);
+    s.setValue("cleanOmtOutName",
+               QString::fromStdString(st.cfg.cleanOmtOutName));
     s.setValue("srtOut", QString::fromStdString(st.cfg.srtUrl));
     s.setValue("srtBitrateKbps", st.cfg.srtBitrateKbps);
     s.setValue("recordBitrateKbps", st.cfg.recordBitrateKbps);
@@ -212,13 +214,12 @@ void ShowFile::save(const State& st) const {
         const auto& spec = st.cfg.inputs[size_t(i)];
         s.setValue(
             "type",
-            spec.type == InputSpec::Type::Srt     ? QStringLiteral("srt")
-            : spec.type == InputSpec::Type::Omt   ? QStringLiteral("omt")
+            spec.type == InputSpec::Type::Srt ? QStringLiteral("srt")
             : spec.type == InputSpec::Type::DeckLink
                 ? QStringLiteral("decklink")
             : spec.type == InputSpec::Type::Media ? QStringLiteral("media")
             : spec.type == InputSpec::Type::Still ? QStringLiteral("still")
-                                                  : QStringLiteral("ndi"));
+                                                  : QStringLiteral("omt"));
         s.setValue("ref", QString::fromStdString(spec.ref));
         s.setValue("framesync", spec.syncFrames);
         if (spec.type == InputSpec::Type::Media) {

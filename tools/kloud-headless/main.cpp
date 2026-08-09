@@ -15,13 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 // kloud-headless: runs the switcher engine without a GUI. Verification driver
-// for M1: connects NDI inputs, renders the multiview, dumps PPM frames,
+// for M1: connects OMT/SDI/SRT inputs, renders the multiview, dumps PPM frames,
 // exercises cut via a scripted schedule, prints stats.
 
 #include <csignal>
@@ -38,6 +38,7 @@
 #include "core/MediaClock.h"
 #include "core/Stats.h"
 #include "ctl/ControlServer.h"
+#include "decklink/DeckLinkRef.h"
 #include "engine/Engine.h"
 #include "media/StillImage.h"
 
@@ -84,19 +85,14 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
-        if (a == "--input") {
+        if (a == "--input" || a == "--omt-input") {
             if (const char* v = next()) {
-                cfg.inputs.push_back({kloud::InputSpec::Type::Ndi, v});
+                cfg.inputs.push_back({kloud::InputSpec::Type::Omt, v});
                 lastMediaInput = -1;
             }
         } else if (a == "--srt-input") {
             if (const char* v = next()) {
                 cfg.inputs.push_back({kloud::InputSpec::Type::Srt, v});
-                lastMediaInput = -1;
-            }
-        } else if (a == "--omt-input") {
-            if (const char* v = next()) {
-                cfg.inputs.push_back({kloud::InputSpec::Type::Omt, v});
                 lastMediaInput = -1;
             }
         } else if (a == "--decklink-input") {
@@ -184,14 +180,14 @@ int main(int argc, char** argv) {
             scriptedCuts = true;  // cut every 2 seconds
         } else if (a == "--autos") {
             scriptedAutos = true;  // auto-transition every 2.5s, cycling types
-        } else if (a == "--no-ndi-out") {
-            cfg.ndiOut = false;
-        } else if (a == "--ndi-out-name") {
-            if (const char* v = next()) cfg.ndiOutName = v;
-        } else if (a == "--clean-ndi-out") {
+        } else if (a == "--no-omt-out") {
+            cfg.omtOut = false;
+        } else if (a == "--omt-out-name") {
+            if (const char* v = next()) cfg.omtOutName = v;
+        } else if (a == "--clean-omt-out") {
             if (const char* v = next()) {
-                cfg.cleanNdiOut = true;
-                cfg.cleanNdiOutName = v;
+                cfg.cleanOmtOut = true;
+                cfg.cleanOmtOutName = v;
             }
         } else if (a == "--srt-out") {
             if (const char* v = next()) cfg.srtUrl = v;
@@ -275,7 +271,8 @@ int main(int argc, char** argv) {
             cfg.validation = true;
         } else {
             fprintf(stderr,
-                    "usage: kloud-headless --input NAME [--input NAME ...] "
+                    "usage: kloud-headless --input NAME_OR_URL "
+                    "[--input NAME_OR_URL ...] "
                     "[--srt-input URL] [--omt-input NAME_OR_URL] "
                     "[--decklink-input INDEX|decklink://REF] "
                     "[--still-input PATH] "
@@ -286,7 +283,8 @@ int main(int argc, char** argv) {
                     "[--record PATH.mkv] [--clean-record PATH.mkv] "
                     "[--record-bitrate KBPS] [--record-stop-after S] "
                     "[--clean-record-stop-after S] "
-                    "[--clean-ndi-out NAME] "
+                    "[--no-omt-out] [--omt-out-name NAME] "
+                    "[--clean-omt-out NAME] "
                     "[--show WxH] [--duration S] [--dump-dir D] "
                     "[--dump-every S] [--cuts] [--no-audio] "
                     "[--audio-delay MS] [--framesync IDX[:FRAMES]] "
@@ -300,8 +298,8 @@ int main(int argc, char** argv) {
         }
     }
     if (cfg.inputs.empty())
-        cfg.inputs = {{kloud::InputSpec::Type::Ndi, "KloudBenchA"},
-                      {kloud::InputSpec::Type::Ndi, "KloudBenchB"}};
+        cfg.inputs = {{kloud::InputSpec::Type::Omt, "KloudBenchA"},
+                      {kloud::InputSpec::Type::Omt, "KloudBenchB"}};
     for (auto [idx, fr] : syncSpecs) {
         if (size_t(idx) >= cfg.inputs.size()) {
             fprintf(stderr, "--framesync %d: no such input\n", idx);
@@ -372,13 +370,13 @@ int main(int argc, char** argv) {
                 r.done = true;
                 const auto type =
                     r.ref.rfind("srt://", 0) == 0 ? kloud::InputSpec::Type::Srt
-                    : r.ref.rfind("omt://", 0) == 0
-                        ? kloud::InputSpec::Type::Omt
+                    : kloud::isDeckLinkRef(r.ref)
+                        ? kloud::InputSpec::Type::DeckLink
                     : std::filesystem::is_regular_file(r.ref)
                         ? (kloud::media::isStillImagePath(r.ref)
                                ? kloud::InputSpec::Type::Still
                                : kloud::InputSpec::Type::Media)
-                        : kloud::InputSpec::Type::Ndi;
+                        : kloud::InputSpec::Type::Omt;
                 engine.requestInputReplace(r.idx, {type, r.ref});
             }
         }
@@ -429,9 +427,9 @@ int main(int argc, char** argv) {
                                     : rec.active ? "on"
                                                  : "starting") +
                         " f=" + std::to_string(rec.frames) + "]";
-            if (engine.cleanNdiOutFrames())
-                line += "  cleanNdi[f=" +
-                        std::to_string(engine.cleanNdiOutFrames()) + "]";
+            if (engine.cleanOmtOutFrames())
+                line += "  cleanOmt[f=" +
+                        std::to_string(engine.cleanOmtOutFrames()) + "]";
             for (int i = 0; i < engine.inputCount(); ++i) {
                 const auto s = engine.inputStatus(i);
                 line += "  in" + std::to_string(i) + "[" +

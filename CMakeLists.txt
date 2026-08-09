@@ -11,7 +11,6 @@ endif()
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 find_package(Threads REQUIRED)
-find_package(NDI)
 find_package(Vulkan REQUIRED)
 
 add_library(kloud_core STATIC
@@ -121,102 +120,87 @@ else()
   message(STATUS "DeckLink SDK not found (${DECKLINK_SDK_DIR}) - DeckLink input disabled.")
 endif()
 
-if(NDI_FOUND)
-  add_library(kloud_ndi STATIC src/ndi/NdiLib.cpp)
-  target_link_libraries(kloud_ndi PUBLIC kloud_core NDI::ndi)
-  target_compile_options(kloud_ndi PRIVATE -Wall -Wextra)
+add_library(kloud_engine STATIC
+  src/engine/Engine.cpp
+  src/ctl/ControlServer.cpp
+  src/in/SrtInput.cpp
+  src/in/StillInput.cpp
+  src/out/FileRecorder.cpp
+  src/out/OmtOutput.cpp
+  src/out/SrtOutput.cpp
+)
+target_link_libraries(kloud_engine PUBLIC kloud_gpu kloud_media)
+target_compile_options(kloud_engine PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
+if(OMT_FOUND)
+  target_sources(kloud_engine PRIVATE src/omt/OmtInput.cpp)
+  target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_OMT)
+  target_link_libraries(kloud_engine PUBLIC OMT::omt)
+endif()
+if(DECKLINK_FOUND)
+  target_sources(kloud_engine PRIVATE
+    src/decklink/DeckLinkInput.cpp
+    ${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp)
+  target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_DECKLINK)
+  target_include_directories(kloud_engine PUBLIC ${DECKLINK_SDK_DIR}/include)
+  target_link_libraries(kloud_engine PUBLIC ${CMAKE_DL_LIBS})
+  # SDK header, not ours: it trips -Wall/-Wextra and multichar constants.
+  set_source_files_properties(${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp
+    PROPERTIES COMPILE_OPTIONS "-w")
+endif()
 
-  get_filename_component(_ndi_libdir ${NDI_LIBRARY} DIRECTORY)
+set(_kloud_rpath "")
+if(OMT_FOUND)
+  set(_kloud_rpath "${_omt_libdir}")
+endif()
 
+# The bench rig talks OMT end to end, so it only exists with the SDK.
+if(OMT_FOUND)
   foreach(tool kloud-testgen kloud-latmeter)
     add_executable(${tool} tools/${tool}/main.cpp)
-    target_link_libraries(${tool} PRIVATE kloud_ndi)
+    target_link_libraries(${tool} PRIVATE kloud_core OMT::omt)
     target_include_directories(${tool} PRIVATE tools)
     target_compile_options(${tool} PRIVATE -Wall -Wextra)
-    # Locate libndi.so.6 next to the SDK without requiring ldconfig.
+    # Locate libomt.so next to the SDK without requiring ldconfig.
     set_target_properties(${tool} PROPERTIES
-      BUILD_RPATH ${_ndi_libdir}
-      INSTALL_RPATH ${_ndi_libdir})
+      BUILD_RPATH "${_omt_libdir}"
+      INSTALL_RPATH "${_omt_libdir}")
   endforeach()
-  if(OMT_FOUND)
-    # testgen gains an OMT sender for benching (--omt).
-    target_compile_definitions(kloud-testgen PRIVATE KLOUD_HAVE_OMT)
-    target_link_libraries(kloud-testgen PRIVATE OMT::omt)
-    set_target_properties(kloud-testgen PROPERTIES
-      BUILD_RPATH "${_ndi_libdir};${_omt_libdir}"
-      INSTALL_RPATH "${_ndi_libdir};${_omt_libdir}")
-  endif()
-
-  add_library(kloud_engine STATIC
-    src/engine/Engine.cpp
-    src/ctl/ControlServer.cpp
-    src/in/SrtInput.cpp
-    src/in/StillInput.cpp
-    src/ndi/NdiFinder.cpp
-    src/ndi/NdiReceiver.cpp
-    src/out/FileRecorder.cpp
-    src/out/NdiOutput.cpp
-    src/out/SrtOutput.cpp
-  )
-  target_link_libraries(kloud_engine PUBLIC kloud_gpu kloud_ndi kloud_media)
-  target_compile_options(kloud_engine PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
-  if(OMT_FOUND)
-    target_sources(kloud_engine PRIVATE src/omt/OmtInput.cpp)
-    target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_OMT)
-    target_link_libraries(kloud_engine PUBLIC OMT::omt)
-  endif()
-  if(DECKLINK_FOUND)
-    target_sources(kloud_engine PRIVATE
-      src/decklink/DeckLinkInput.cpp
-      ${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp)
-    target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_DECKLINK)
-    target_include_directories(kloud_engine PUBLIC ${DECKLINK_SDK_DIR}/include)
-    target_link_libraries(kloud_engine PUBLIC ${CMAKE_DL_LIBS})
-    # SDK header, not ours: it trips -Wall/-Wextra and multichar constants.
-    set_source_files_properties(${DECKLINK_SDK_DIR}/include/DeckLinkAPIDispatch.cpp
-      PROPERTIES COMPILE_OPTIONS "-w")
-  endif()
-
-  set(_kloud_rpath ${_ndi_libdir})
-  if(OMT_FOUND)
-    set(_kloud_rpath "${_ndi_libdir};${_omt_libdir}")
-  endif()
-
-  add_executable(kloud-headless tools/kloud-headless/main.cpp)
-  target_link_libraries(kloud-headless PRIVATE kloud_engine)
-  target_include_directories(kloud-headless PRIVATE tools)
-  set_target_properties(kloud-headless PROPERTIES
-    BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_rpath}")
-
-  find_package(Qt6 COMPONENTS Widgets QUIET)
-  if(Qt6_FOUND)
-    add_executable(8kloud-switcher
-      src/ui/main.cpp
-      src/ui/MainWindow.cpp
-      src/ui/MainWindow.h
-      src/ui/MultiviewWidget.cpp
-      src/ui/MultiviewWidget.h
-      src/ui/EngineBridge.cpp
-      src/ui/EngineBridge.h
-      src/ui/MixerPanel.cpp
-      src/ui/MixerPanel.h
-      src/ui/ShowFile.cpp
-      src/ui/ShowFile.h
-      src/ui/resources.qrc
-    )
-    set_target_properties(8kloud-switcher PROPERTIES
-      AUTOMOC ON
-      AUTORCC ON
-      BUILD_RPATH "${_kloud_rpath}"
-      INSTALL_RPATH "${_kloud_rpath}")
-    target_link_libraries(8kloud-switcher PRIVATE kloud_engine Qt6::Widgets)
-    target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
-  else()
-    message(WARNING "Qt6 Widgets not found - GUI app will not be built.")
-  endif()
 else()
-  message(WARNING "NDI SDK not found - NDI tools will not be built. "
-                  "Set NDI_SDK_DIR or populate third_party/ndi.")
+  message(WARNING "OMT SDK not found - kloud-testgen/kloud-latmeter will not "
+                  "be built, and OMT input/output will be unavailable.")
+endif()
+
+add_executable(kloud-headless tools/kloud-headless/main.cpp)
+target_link_libraries(kloud-headless PRIVATE kloud_engine)
+target_include_directories(kloud-headless PRIVATE tools)
+set_target_properties(kloud-headless PROPERTIES
+  BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_rpath}")
+
+find_package(Qt6 COMPONENTS Widgets QUIET)
+if(Qt6_FOUND)
+  add_executable(8kloud-switcher
+    src/ui/main.cpp
+    src/ui/MainWindow.cpp
+    src/ui/MainWindow.h
+    src/ui/MultiviewWidget.cpp
+    src/ui/MultiviewWidget.h
+    src/ui/EngineBridge.cpp
+    src/ui/EngineBridge.h
+    src/ui/MixerPanel.cpp
+    src/ui/MixerPanel.h
+    src/ui/ShowFile.cpp
+    src/ui/ShowFile.h
+    src/ui/resources.qrc
+  )
+  set_target_properties(8kloud-switcher PROPERTIES
+    AUTOMOC ON
+    AUTORCC ON
+    BUILD_RPATH "${_kloud_rpath}"
+    INSTALL_RPATH "${_kloud_rpath}")
+  target_link_libraries(8kloud-switcher PRIVATE kloud_engine Qt6::Widgets)
+  target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
+else()
+  message(WARNING "Qt6 Widgets not found - GUI app will not be built.")
 endif()
 
 option(KLOUD_BUILD_TESTS "Build unit tests" ON)

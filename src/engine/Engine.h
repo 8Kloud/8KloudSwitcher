@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <array>
@@ -41,21 +41,20 @@
 #include "gpu/UploadRing.h"
 #include "gpu/VkEngine.h"
 #include "media/IVideoEncoder.h"
-#include "ndi/NdiFinder.h"
-#include "ndi/NdiReceiver.h"
 
 #include "media/CudaCtx.h"
 #include "media/Playlist.h"
 
 namespace kloud {
 
-class NdiOutput;
+class OmtOutput;
 class FileRecorder;
 class SrtOutput;
 
 struct InputSpec {
-    enum class Type { Ndi, Srt, Omt, Media, Still, DeckLink } type = Type::Ndi;
-    // NDI name, SRT/OMT URL, decklink:// ref, local video, or still image
+    enum class Type { Omt, Srt, Media, Still, DeckLink } type = Type::Omt;
+    // OMT discovery name or omt:// URL, SRT URL, decklink:// ref, local
+    // video, or still image
     std::string ref;
     // Frame sync (docs/design-framesync.md): -1 = off (v1 latest-frame
     // behavior), 0 = measure-only (auto A/V trim, no added latency),
@@ -78,10 +77,10 @@ struct EngineConfig {
     int mvH = 1080;
     std::vector<InputSpec> inputs;
     bool validation = false;
-    bool ndiOut = true;
-    std::string ndiOutName = "8Kloud Switcher PGM";
-    bool cleanNdiOut = false;
-    std::string cleanNdiOutName = "8Kloud Switcher CLEAN";
+    bool omtOut = true;
+    std::string omtOutName = "8Kloud Switcher PGM";
+    bool cleanOmtOut = false;
+    std::string cleanOmtOutName = "8Kloud Switcher CLEAN";
     std::string srtUrl;      // empty = SRT output off
     int srtBitrateKbps = 0;  // 0 = auto
     int recordBitrateKbps = 0;  // 0 = auto; independent of SRT output
@@ -91,14 +90,14 @@ struct EngineConfig {
     media::EncoderPreset encoderPreset = media::EncoderPreset::Auto;
     bool audio = true;
     // A/V calibration. Measured on this box: with 0, offsets land at
-    // 1080p NDI ~-1ms / SRT ~-7ms, 8K NDI ~+7ms (audio ages ~one capture
+    // 1080p network-in ~-1ms / SRT ~-7ms, 8K ~+7ms (audio ages ~one capture
     // iteration more at 8K) -- all inside the +-10ms gate. Operators
     // re-trim per show from the GUI master strip.
     int masterAudioDelayMs = 0;
 };
 
-// Owns the GPU, the NDI inputs and program output, the switcher state
-// machine, and the 59.94-paced render thread. Qt-free.
+// Owns the GPU, the inputs and program output, the switcher state machine,
+// and the 59.94-paced render thread. Qt-free.
 class Engine {
 public:
     Engine();   // out-of-line: members hold unique_ptrs to fwd-declared types
@@ -120,7 +119,6 @@ public:
     // media specs require Vulkan/CUDA interop (initialized on demand; refused
     // if absent).
     void requestInputReplace(int index, InputSpec spec);
-    std::vector<NdiFinder::Source> ndiSources() const;
     // OMT discovery snapshot (names in "HOST (Name)" form). Empty when built
     // without OMT. First call may return empty until mDNS answers arrive.
     std::vector<std::string> omtSources() const;
@@ -179,8 +177,8 @@ public:
     const audio::AudioEngine* audio() const { return audio_.get(); }
     int64_t renderedTicks() const { return ticks_.load(std::memory_order_relaxed); }
     int64_t skippedTicks() const { return skips_.load(std::memory_order_relaxed); }
-    int64_t ndiOutFrames() const;
-    int64_t cleanNdiOutFrames() const;
+    int64_t omtOutFrames() const;
+    int64_t cleanOmtOutFrames() const;
     int64_t srtFramesEncoded() const;
     bool srtConnected() const;
     bool srtConfigured() const { return srtOut_ != nullptr; }
@@ -196,10 +194,9 @@ private:
     EngineConfig cfg_;
     gpu::VkEngine vk_;
     std::unique_ptr<gpu::Compositor> comp_;
-    std::unique_ptr<NdiFinder> finder_;
     std::vector<std::unique_ptr<IInputSource>> inputs_;
-    std::unique_ptr<NdiOutput> ndiOut_;
-    std::unique_ptr<NdiOutput> cleanNdiOut_;
+    std::unique_ptr<OmtOutput> omtOut_;
+    std::unique_ptr<OmtOutput> cleanOmtOut_;
     media::CudaCtx cuda_;
     std::unique_ptr<SrtOutput> srtOut_;
     // Atomic shared ownership lets the audio and render threads take a

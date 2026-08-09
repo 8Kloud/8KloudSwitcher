@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <array>
@@ -36,16 +36,16 @@ namespace kloud::gpu {
 //   composite.comp:      inputs (UYVY) -> program RGBA16F (mix/wipes/FTB);
 //                        dispatched again at proxy res for the look-ahead
 //                        preview monitor (preview bus + post-transition DSKs)
-//   pack_uyvy.comp:      program -> UYVY words (device buffer, for NDI out)
+//   pack_uyvy.comp:      program -> UYVY words (device buffer, for OMT out)
 //   proxy_down.comp:     inputs + program -> <=960x544 RGBA8 proxies
 //   multiview_tile.comp: proxies/labels/solid borders -> multiview RGBA8
-// plus multiview -> host readback and the pack -> host ring for the NDI
+// plus multiview -> host readback and the pack -> host ring for the OMT
 // sender (4 slots: sender pins up to 2, one in DMA flight, one writable).
 class Compositor {
 public:
     static constexpr int kFramesInFlight = 2;
     static constexpr int kReadbackSlots = 3;   // multiview (GUI)
-    static constexpr int kPackSlots = 4;       // program UYVY (NDI out)
+    static constexpr int kPackSlots = 4;       // program UYVY (OMT out)
     static constexpr int kFeedCount = 2;
     static constexpr int kProxyW = 960, kProxyH = 544;
     static constexpr int kLabelRowH = 24;
@@ -72,8 +72,8 @@ public:
         // Look-ahead preview monitor: keyer levels for the proxy-res
         // preview composite (post-next-transition state; 0 = keyer absent).
         float pvwDskLevel[kDskCount] = {0.f, 0.f};
-        bool packProgram = false;         // record UYVY pack (NDI out enabled)
-        bool packClean = false;           // UYVY clean-feed NDI output
+        bool packProgram = false;         // record UYVY pack (OMT out enabled)
+        bool packClean = false;           // UYVY clean-feed OMT output
         bool packNv12 = false;            // record NV12 pack (SRT out enabled)
         bool packCleanNv12 = false;       // clean-feed recorder
     };
@@ -91,7 +91,7 @@ public:
     int mvWidth() const { return mvW_; }
     int mvHeight() const { return mvH_; }
 
-    // Pack host ring (NDI sender).
+    // Pack host ring (OMT sender).
     const uint8_t* packPtr(int slot, Feed feed = Feed::Program) const {
         return static_cast<const uint8_t*>(
             packHost_[int(feed)][slot].mapped);

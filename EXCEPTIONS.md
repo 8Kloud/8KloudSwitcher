@@ -16,7 +16,6 @@ permission to combine 8Kloud Switcher with, and to convey and/or distribute the
 resulting combined work while linked against, the following proprietary
 libraries and their SDK headers:
 
-  - the NDI(R) SDK (NewTek / Vizrt NDI AB);
   - the NVIDIA CUDA Toolkit, the NVIDIA Video Codec SDK, and the NVIDIA
     driver runtime libraries (including libcuda, NVENC, and NVDEC);
   - the Open Media Transport runtime libraries (libomt and libvmx);

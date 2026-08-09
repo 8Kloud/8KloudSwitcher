@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <QImage>
@@ -88,9 +88,10 @@ public slots:
     void setAudioDelayMs(int input, int ms);
     void setMasterDelayMs(int ms);
 
-    // Source picker: type -1 = infer from the ref (srt://->SRT, omt://->OMT,
-    // anything else = NDI name substring); 0/1/2/3/4 force
-    // Ndi/Srt/Omt/Media/Still for discovery and local-file choices.
+    // Source picker: type -1 = infer from the ref (srt://->SRT,
+    // decklink://->SDI, an existing path->media/still, anything else = an OMT
+    // discovery name or omt:// URL); 0..4 force Omt/Srt/Media/Still/DeckLink
+    // for discovery and local-file choices.
     // syncFrames: -1 off, 0 measure-only (auto A/V trim), 1..4 buffered.
     // Static stills always force sync off. Takes effect at the next render
     // tick.
@@ -105,14 +106,12 @@ public:
     float audioGain(int input) const;
     bool audioMute(int input) const;
     bool audioSolo(int input) const;
-    QStringList ndiSourceNames() const;
     QStringList omtSourceNames() const;  // empty when built without OMT
     // DeckLink devices as {label, decklink:// ref} pairs, in SDK order. Empty
     // when built without the SDK or when no card is present.
     QList<QPair<QString, QString>> decklinkSources() const;
     QString inputRef(int input) const;
-    // InputSpec::Type as int (0 NDI, 1 SRT, 2 OMT, 3 media, 4 still,
-    // 5 DeckLink).
+    // InputSpec::Type as int (0 OMT, 1 SRT, 2 media, 3 still, 4 DeckLink).
     int inputType(int input) const;
     IInputSource::MediaState mediaState(int input) const {
         return engine_.inputMediaState(input);

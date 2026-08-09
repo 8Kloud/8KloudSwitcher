@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #pragma once
 #include <cstdint>
@@ -28,7 +28,7 @@ namespace kloud::audio {
 
 constexpr int kSampleRate = 48000;
 constexpr int kChannels = 2;       // stereo bus in v1
-// 5 ms mixer tick. Simulated worst-phase ring fill against NDI's ~16.7 ms
+// 5 ms mixer tick. Simulated worst-phase ring fill against a ~16.7 ms
 // audio burst cadence: prefill 960 + chunk 240 never dips below 566 frames
 // (chunk 480: 328), and the finer grid halves mean chunk-quantization
 // latency -- measured ~2.5 ms off both output paths' A/V centers.

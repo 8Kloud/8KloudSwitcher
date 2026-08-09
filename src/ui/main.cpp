@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include <algorithm>
 #include <memory>
@@ -68,9 +68,11 @@ int main(int argc, char** argv) {
     };
     for (int i = 1; i < args.size(); ++i) {
         if (args[i] == QStringLiteral("--input") && i + 1 < args.size())
-            addInput(kloud::InputSpec::Type::Ndi, args[++i]);
+            addInput(kloud::InputSpec::Type::Omt, args[++i]);
         else if (args[i] == QStringLiteral("--srt-input") && i + 1 < args.size())
             addInput(kloud::InputSpec::Type::Srt, args[++i]);
+        else if (args[i] == QStringLiteral("--sdi-input") && i + 1 < args.size())
+            addInput(kloud::InputSpec::Type::DeckLink, args[++i]);
         else if (args[i] == QStringLiteral("--media-input") &&
                  i + 1 < args.size())
             addInput(kloud::InputSpec::Type::Media, args[++i]);
@@ -79,10 +81,10 @@ int main(int argc, char** argv) {
             addInput(kloud::InputSpec::Type::Still, args[++i]);
         else if (args[i] == QStringLiteral("--validate"))
             cfg.validation = true;
-        else if (args[i] == QStringLiteral("--clean-ndi-out") &&
+        else if (args[i] == QStringLiteral("--clean-omt-out") &&
                  i + 1 < args.size()) {
-            cfg.cleanNdiOut = true;
-            cfg.cleanNdiOutName = args[++i].toStdString();
+            cfg.cleanOmtOut = true;
+            cfg.cleanOmtOutName = args[++i].toStdString();
         }
         else if (args[i] == QStringLiteral("--show") && i + 1 < args.size()) {
             const auto parts = args[++i].split('x');
@@ -132,7 +134,7 @@ int main(int argc, char** argv) {
     // black until the operator patches a source from the INPUTS tab.
     constexpr size_t kInputSlots = 21;
     while (cfg.inputs.size() < kInputSlots)
-        cfg.inputs.push_back({kloud::InputSpec::Type::Ndi, ""});
+        cfg.inputs.push_back({kloud::InputSpec::Type::Omt, ""});
     show.chans.resize(cfg.inputs.size());
 
     kloud::Engine engine;

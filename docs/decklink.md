@@ -22,7 +22,7 @@ unusable, and this one cannot.
 
 ## Building
 
-Headers are vendored (gitignored, like the NDI and OMT SDKs):
+Headers are vendored (gitignored, like the OMT SDK):
 
 ```sh
 mkdir -p third_party/decklink/include

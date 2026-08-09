@@ -1,6 +1,8 @@
 # Clean feed
 
-Status: IMPLEMENTED (recording and NDI output, 2026-07-18).
+Status: IMPLEMENTED (recording and network output, 2026-07-18). The second
+sender was NDI at the time of writing and is OMT since v1.1; the readback,
+pinning and fan-out mechanics below are unchanged.
 
 ## Operator contract
 
@@ -12,12 +14,12 @@ and alpha, regardless of their on-air levels.
 - GUI: **CLEAN REC** starts and stops an independent HEVC/AAC Matroska file.
 - Headless: `--clean-record PATH.mkv`; optional
   `--clean-record-stop-after S`.
-- NDI: `--clean-ndi-out NAME` enables a second sender in either executable.
+- OMT: `--clean-omt-out NAME` enables a second sender in either executable.
 - `--record-bitrate KBPS` applies to both program and clean recorders.
-- Normal program recording, clean recording, normal NDI, and clean NDI can
+- Normal program recording, clean recording, normal OMT, and clean OMT can
   operate simultaneously.
 
-Clean NDI enable/name settings persist in GUI show files. Recording paths and
+Clean OMT enable/name settings persist in GUI show files. Recording paths and
 active recording state remain session-only, matching normal program recording.
 
 ## GPU and output architecture
@@ -29,18 +31,19 @@ normal program target.
 
 Each feed has independent:
 
-- device-local UYVY pack buffers and a four-slot host readback ring for NDI;
+- device-local UYVY pack buffers and a four-slot host readback ring for the
+  network senders;
 - exportable NV12 pack buffers for NVENC recording;
-- slot stamps, NDI pin tracking, recorder copied-value handshakes, and drop
+- slot stamps, sender pin tracking, recorder copied-value handshakes, and drop
   counters.
 
-The two NDI copies share one transfer-queue submission and timeline per render
+The two sender copies share one transfer-queue submission and timeline per render
 tick. Program SRT and program recording retain their existing shared NV12
 buffer; clean recording uses a different NV12 buffer, so a slow clean encoder
 cannot hold the program encoder buffer. All consumers remain drop-capable:
 backpressure can skip an encoded-output frame but never block the render tick.
 
-Master audio is fanned to both NDI senders and both recorder instances. DSK
+Master audio is fanned to both OMT senders and both recorder instances. DSK
 sources have never been automatically mixed into program audio, so the normal
 master is already the correct clean-feed audio contract. FTB dips that master
 audio and both video feeds together.
@@ -53,15 +56,15 @@ audio and both video feeds together.
   for 121 frames at 640×360 60000/1001. Both Matroska files finalized at
   2.052 seconds with HEVC video; normal contained the DSK and clean contained
   only the underlying source. Program rendering had zero skips.
-- Clean-only NDI smoke: 122 clean frames sent for 122 render ticks with zero
+- Clean-only sender smoke: 122 clean frames sent for 122 render ticks with zero
   skips.
-- Dual-NDI smoke: normal and clean senders each sent 92 frames for 92 render
+- Dual-sender smoke: normal and clean senders each sent 92 frames for 92 render
   ticks with zero skips.
 - Full automated suite: 74/74 passing.
 
 ## Known limits
 
-- Clean feed is available as Matroska recording and NDI, not as a second SRT
+- Clean feed is available as Matroska recording and OMT, not as a second SRT
   output.
 - The multiview PROGRAM monitor remains normal program with DSKs; there is no
   dedicated clean monitor tile.

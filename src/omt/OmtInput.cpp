@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "omt/OmtInput.h"
 
@@ -70,10 +70,10 @@ void OmtInput::run(std::stop_token st) {
 
     int64_t lastVideoNs = MediaClock::nowNs();
     bool everConnected = false;
-    // Sticky-UYVA eligibility is per connection (see NdiReceiver).
+    // Sticky-UYVA eligibility is per connection.
     bool alphaThisConn = false;
 
-    // Frame-sync pts state, same policy as NdiReceiver: sender timestamps
+    // Frame-sync pts state: sender timestamps
     // (100 ns units) are the pts source of truth, deltas only; absent or
     // cadence-breaking timestamps flip to a synthesized arrival grid,
     // sticky until reconnect.
@@ -92,8 +92,8 @@ void OmtInput::run(std::stop_token st) {
         const float* l = static_cast<const float*>(a.Data);
         const float* r =
             a.Channels > 1 ? l + a.SamplesPerChannel : l;  // mono: dup plane
-        // Same sender clock as video timestamps; first-sample time, exactly
-        // like the NDI reading (docs/bench-framesync.md).
+        // Same sender clock as the video timestamps, read as a first-sample
+        // time (docs/bench-framesync.md).
         const int64_t pts =
             a.Timestamp >= 0 ? a.Timestamp * 100 : audio::InputChannel::kNoPts;
         ch->pushPlanar(l, r, a.SamplesPerChannel, a.SampleRate, pts);
@@ -138,8 +138,8 @@ void OmtInput::run(std::stop_token st) {
         // last-frame buffers in libomt). Video pointers survive audio calls.
         if (fr && fr->Type == OMTFrameType_Audio) pushAudio(*fr);
 
-        // Drain queued audio greedily every pass (NDI gotcha applied on
-        // principle: a startup backlog must never park in the transport).
+        // Drain queued audio greedily every pass: a startup backlog must
+        // never park in the transport.
         {
             OMTMediaFrame* extra;
             while ((extra = omt_receive(recv_, OMTFrameType_Audio, 0)) != nullptr)
@@ -183,7 +183,7 @@ void OmtInput::run(std::stop_token st) {
         d.colorimetry = VideoFormatDesc::colorimetryForHeight(fr->Height);
 
         // Sticky-UYVA: keep the alpha ring across interleaved UYVY frames
-        // (same policy and rationale as NdiReceiver).
+        // (see the sticky-UYVA note above).
         if (incomingAlpha) alphaThisConn = true;
         if (!incomingAlpha && alphaThisConn && ring_ &&
             ring_->desc().hasAlpha()) {

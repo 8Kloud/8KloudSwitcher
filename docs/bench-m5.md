@@ -1,5 +1,10 @@
 # M5 bench record — 2026-07-06
 
+> **Historical record.** These runs measured the NDI transport, which was
+> removed in favour of OMT/SDI/SRT (see `README.md`). The pipeline, GPU and
+> encoder numbers still stand; the NDI-specific transport figures are kept
+> for provenance, not as current guidance.
+
 Host: Ryzen 9 9900X (12C/24T), 62 GB DDR5, RTX 5090 (PCIe **Gen5 x8**
 confirmed under load — lane-shared with the 10 GbE NIC), driver 610.43,
 CachyOS. All video 59.94p, audio 48 kHz stereo. Same-host NDI =

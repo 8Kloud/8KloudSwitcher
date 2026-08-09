@@ -1,6 +1,6 @@
 # OMT input bench (2026-07-07)
 
-Setup: `kloud-testgen --omt` → `kloud-headless --omt-input` (discovery name),
+Setup: `kloud-testgen` → `kloud-headless --input` (discovery name),
 same host (RTX 5090 / 9900X, see `docs/bench-m5.md`), sender quality
 Default, 45–50 s runs, CPU sampled over 15 s of steady state with
 `scripts/cpu_sample.py` (100% = one core; testgen number includes pattern

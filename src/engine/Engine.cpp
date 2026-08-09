@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * Additional permission under GNU GPL version 3 section 7: you may link
- * 8Kloud Switcher against the proprietary NDI SDK, the NVIDIA CUDA / Video
- * Codec SDK runtime (CUDA, NVENC, NVDEC), the OMT (libomt / libvmx)
- * runtime, and the Blackmagic DeckLink SDK, and distribute the combined
- * work. See EXCEPTIONS.md for the full exception text. */
+ * 8Kloud Switcher against the NVIDIA CUDA / Video Codec SDK runtime (CUDA,
+ * NVENC, NVDEC), the OMT (libomt / libvmx) runtime, and the Blackmagic
+ * DeckLink SDK, and distribute the combined work. See EXCEPTIONS.md for
+ * the full exception text. */
 
 #include "engine/Engine.h"
 
@@ -31,9 +31,8 @@
 #include "engine/FrameSync.h"
 #include "in/SrtInput.h"
 #include "in/StillInput.h"
-#include "ndi/NdiLib.h"
 #include "out/FileRecorder.h"
-#include "out/NdiOutput.h"
+#include "out/OmtOutput.h"
 #include "out/SrtOutput.h"
 #ifdef KLOUD_HAVE_OMT
 #include <libomt.h>
@@ -48,6 +47,14 @@
 namespace kloud {
 
 namespace {
+// Stand-in for an input whose transport was not compiled in: it satisfies the
+// interface and never publishes, so the render loop shows the placeholder.
+class NullInput final : public IInputSource {
+public:
+    std::optional<Mailbox::Item> newer(uint64_t) const override { return {}; }
+    Status status() const override { return {}; }
+};
+
 void normalizeInputSpec(InputSpec& spec) {
     if (spec.type == InputSpec::Type::Still) {
         // A static frame has no source cadence or audio to re-time.
@@ -67,9 +74,9 @@ void normalizeInputSpec(InputSpec& spec) {
 Engine::Engine() = default;
 Engine::~Engine() { stop(); }
 
-int64_t Engine::ndiOutFrames() const { return ndiOut_ ? ndiOut_->framesSent() : 0; }
-int64_t Engine::cleanNdiOutFrames() const {
-    return cleanNdiOut_ ? cleanNdiOut_->framesSent() : 0;
+int64_t Engine::omtOutFrames() const { return omtOut_ ? omtOut_->framesSent() : 0; }
+int64_t Engine::cleanOmtOutFrames() const {
+    return cleanOmtOut_ ? cleanOmtOut_->framesSent() : 0;
 }
 int64_t Engine::srtFramesEncoded() const {
     return srtOut_ ? srtOut_->framesEncoded() : 0;
@@ -80,10 +87,6 @@ void Engine::requestInputReplace(int index, InputSpec spec) {
     normalizeInputSpec(spec);
     std::lock_guard lk(replaceM_);
     pendingReplace_.emplace_back(index, std::move(spec));
-}
-
-std::vector<NdiFinder::Source> Engine::ndiSources() const {
-    return finder_ ? finder_->snapshot() : std::vector<NdiFinder::Source>{};
 }
 
 std::vector<std::string> Engine::omtSources() const {
@@ -113,7 +116,7 @@ std::string Engine::inputRef(int i) const {
 
 InputSpec::Type Engine::inputType(int i) const {
     std::lock_guard lk(replaceM_);
-    if (i < 0 || i >= int(cfg_.inputs.size())) return InputSpec::Type::Ndi;
+    if (i < 0 || i >= int(cfg_.inputs.size())) return InputSpec::Type::Omt;
     return cfg_.inputs[size_t(i)].type;
 }
 
@@ -221,7 +224,6 @@ bool Engine::start(const EngineConfig& cfg) {
     cfg_ = cfg;
     for (auto& spec : cfg_.inputs) normalizeInputSpec(spec);
     if (!vk_.init(cfg.validation)) return false;
-    if (!ndi::initialize()) return false;
 
     comp_ = std::make_unique<gpu::Compositor>(vk_, cfg_.show, cfg_.mvW, cfg_.mvH,
                                               int(cfg_.inputs.size()));
@@ -248,8 +250,8 @@ bool Engine::start(const EngineConfig& cfg) {
                    s.type == InputSpec::Type::Media;
         });
     // Warm CUDA before the render clock starts so pressing RECORD later does
-    // not pay context creation latency on-air. NDI-only operation still works
-    // if interop is unavailable; SRT/media require it.
+    // not pay context creation latency on-air. OMT/SDI-only operation still
+    // works if interop is unavailable; SRT/media require it.
     const bool cudaAvailable =
         vk_.hasExternalMemoryFd && cuda_.init(vk_.deviceUuid());
     if (needCuda && !cudaAvailable) {
@@ -257,14 +259,38 @@ bool Engine::start(const EngineConfig& cfg) {
         return false;
     }
 
-    finder_ = std::make_unique<NdiFinder>();
+    // Senders before receivers, and never the other way round: libomt's
+    // Linux discovery registers a sender by calling the avahi client straight
+    // from the caller's thread (OMTDiscoveryAvahi.RegisterAddressInternal)
+    // while its own event thread iterates the same simple-poll. avahi's
+    // simple-poll is not thread-safe, so a registration racing a receiver's
+    // first resolve wedges discovery for the whole process -- the sender comes
+    // up and every discovery-name input stays dark forever. Bringing the
+    // senders up first makes the registrations happen before any receiver
+    // exists; stop() unwinds in the mirror order.
+    if (cfg_.omtOut) {
+        omtOut_ = std::make_unique<OmtOutput>(cfg_.omtOutName, *comp_,
+                                              readbackTL_);
+        if (!omtOut_->ok()) omtOut_.reset();
+    }
+    if (cfg_.cleanOmtOut) {
+        cleanOmtOut_ = std::make_unique<OmtOutput>(
+            cfg_.cleanOmtOutName, *comp_, readbackTL_,
+            gpu::Compositor::Feed::Clean);
+        if (!cleanOmtOut_->ok()) cleanOmtOut_.reset();
+    }
+
     for (size_t i = 0; i < cfg_.inputs.size(); ++i) {
         // Spread inputs across both DMA engines; serialized 66MB 8K copies on
         // one queue otherwise hold ring slots in flight long enough to starve
         // the ring.
         auto& q = (i % 2) ? vk_.xferDown() : vk_.xferUp();
         const auto& spec = cfg_.inputs[i];
-        if (spec.type == InputSpec::Type::Srt)
+        // An unassigned slot renders black: no capture thread, and nothing
+        // hammering the transport with an empty address.
+        if (spec.ref.empty())
+            inputs_.push_back(std::make_unique<NullInput>());
+        else if (spec.type == InputSpec::Type::Srt)
             inputs_.push_back(std::make_unique<SrtInput>(
                 vk_, q, cuda_, spec.ref, int(i), spec.syncFrames));
         else if (spec.type == InputSpec::Type::Media)
@@ -274,40 +300,22 @@ bool Engine::start(const EngineConfig& cfg) {
         else if (spec.type == InputSpec::Type::Still)
             inputs_.push_back(std::make_unique<StillInput>(
                 vk_, q, spec.ref, int(i), cfg_.show.fpsN, cfg_.show.fpsD));
-        else if (spec.type == InputSpec::Type::Omt)
-#ifdef KLOUD_HAVE_OMT
-            inputs_.push_back(std::make_unique<OmtInput>(
-                vk_, q, spec.ref, int(i), spec.syncFrames));
-#else
-        {
-            KLOUD_LOGE("in%d: OMT input requested but built without OMT SDK; "
-                     "input will stay dark", int(i));
-            inputs_.push_back(std::make_unique<NdiReceiver>(
-                vk_, q, *finder_, spec.ref, int(i), spec.syncFrames));
-        }
-#endif
-        else if (spec.type == InputSpec::Type::DeckLink)
 #ifdef KLOUD_HAVE_DECKLINK
+        else if (spec.type == InputSpec::Type::DeckLink)
             inputs_.push_back(std::make_unique<DeckLinkInput>(
                 vk_, q, spec.ref, int(i), spec.syncFrames));
-#else
-        {
-            KLOUD_LOGE("in%d: DeckLink input requested but built without the "
-                     "DeckLink SDK; input will stay dark", int(i));
-            inputs_.push_back(std::make_unique<NdiReceiver>(
-                vk_, q, *finder_, spec.ref, int(i), spec.syncFrames));
-        }
 #endif
-        else
-            inputs_.push_back(std::make_unique<NdiReceiver>(
-                vk_, q, *finder_, spec.ref, int(i), spec.syncFrames));
+#ifdef KLOUD_HAVE_OMT
+        else if (spec.type == InputSpec::Type::Omt)
+            inputs_.push_back(std::make_unique<OmtInput>(
+                vk_, q, spec.ref, int(i), spec.syncFrames));
+#endif
+        else {
+            KLOUD_LOGE("in%d: transport for '%s' was not built in; input will "
+                     "stay dark", int(i), spec.ref.c_str());
+            inputs_.push_back(std::make_unique<NullInput>());
+        }
     }
-    if (cfg_.ndiOut)
-        ndiOut_ = std::make_unique<NdiOutput>(cfg_.ndiOutName, *comp_, readbackTL_);
-    if (cfg_.cleanNdiOut)
-        cleanNdiOut_ = std::make_unique<NdiOutput>(
-            cfg_.cleanNdiOutName, *comp_, readbackTL_,
-            gpu::Compositor::Feed::Clean);
 
     if (!cfg_.srtUrl.empty()) {
         srtOut_ = std::make_unique<SrtOutput>(
@@ -332,13 +340,13 @@ bool Engine::start(const EngineConfig& cfg) {
             audio_->channel(int(i)).syncManaged.store(
                 cfg_.inputs[i].syncFrames >= 0, std::memory_order_relaxed);
         }
-        if (ndiOut_)
+        if (omtOut_)
             audio_->addSink(
-                [out = ndiOut_.get()](const float* lr, int frames, int64_t s0) {
+                [out = omtOut_.get()](const float* lr, int frames, int64_t s0) {
                     out->sendAudio(lr, frames, s0);
                 });
-        if (cleanNdiOut_)
-            audio_->addSink([out = cleanNdiOut_.get()](
+        if (cleanOmtOut_)
+            audio_->addSink([out = cleanOmtOut_.get()](
                                 const float* lr, int frames, int64_t s0) {
                 out->sendAudio(lr, frames, s0);
             });
@@ -360,15 +368,19 @@ bool Engine::start(const EngineConfig& cfg) {
     // count from here (the audio thread starts on the same origin below).
     clock_ = MediaClock(cfg_.show.fpsN, cfg_.show.fpsD);
     clock_.start();
+    // The OMT senders stamp audio against the same origin the mixer counts
+    // samples from (see OmtOutput's timestamp contract).
+    if (omtOut_) omtOut_->setClockOrigin(clock_.originNs());
+    if (cleanOmtOut_) cleanOmtOut_->setClockOrigin(clock_.originNs());
     if (audio_) audio_->start(clock_.originNs());
     renderThread_ = std::jthread([this](std::stop_token st) { renderLoop(st); });
     started_ = true;
     KLOUD_LOGI("engine started: show %dx%d @ %lld/%lld, %zu inputs, mv %dx%d, "
-             "ndiOut=%s, cleanNdi=%s",
+             "omtOut=%s, cleanOmt=%s",
              cfg_.show.width, cfg_.show.height, (long long)cfg_.show.fpsN,
              (long long)cfg_.show.fpsD, inputs_.size(), comp_->mvWidth(),
-             comp_->mvHeight(), cfg_.ndiOut ? cfg_.ndiOutName.c_str() : "off",
-             cfg_.cleanNdiOut ? cfg_.cleanNdiOutName.c_str() : "off");
+             comp_->mvHeight(), omtOut_ ? cfg_.omtOutName.c_str() : "off",
+             cleanOmtOut_ ? cfg_.cleanOmtOutName.c_str() : "off");
     return true;
 }
 
@@ -494,11 +506,10 @@ void Engine::stop() {
     recorder.reset();
     cleanRecorder.reset();
     inputs_.clear();     // capture threads stop writing the audio rings
-    finder_.reset();
     audio_.reset();      // mixer stops; no more sink calls into the outputs
     srtOut_.reset();     // drains encoder, releases CUDA imports (device alive)
-    cleanNdiOut_.reset();
-    ndiOut_.reset();     // stops sender before its buffers go away
+    cleanOmtOut_.reset();
+    omtOut_.reset();     // stops sender before its buffers go away
     if (renderTL_.lastReserved())
         renderTL_.waitCompleted(renderTL_.lastReserved(), 2'000'000'000);
     vkDeviceWaitIdle(vk_.device());
@@ -511,7 +522,6 @@ void Engine::stop() {
     vk_.destroyTimeline(renderTL_);
     vk_.destroyTimeline(readbackTL_);
     comp_.reset();
-    ndi::destroy();
     vk_.destroy();
     cuda_.destroy();
     started_ = false;
@@ -546,9 +556,9 @@ void Engine::renderLoop(std::stop_token st) {
     auto& tickCtr = Stats::counter("render.ticks");
     auto& skipCtr = Stats::counter("render.skips");
     auto& lateWaitCtr = Stats::counter("render.gpuLateWaits");
-    auto& packSkipCtr = Stats::counter("out.ndi.packSlotBusy");
+    auto& packSkipCtr = Stats::counter("out.omt.packSlotBusy");
     auto& cleanPackSkipCtr =
-        Stats::counter("out.ndi.clean.packSlotBusy");
+        Stats::counter("out.omt.clean.packSlotBusy");
     std::vector<Stats::Counter*> repeatCtr(static_cast<size_t>(N));
     std::vector<Stats::Counter*> burstCtr(static_cast<size_t>(N));
     std::vector<Stats::Counter*> lateCtr(static_cast<size_t>(N));
@@ -592,7 +602,7 @@ void Engine::renderLoop(std::stop_token st) {
     // Path-tail asymmetry between the video measurement point (composite
     // tick) and the audio one (mixer ring pull): mixer chunk quantization
     // and sink fan-out. Calibrated with flash+tone against the TS-capture
-    // ground truth: N=1 NDI-in draws centered -5.5 ms vs the v1 SRT-path
+    // ground truth: N=1 network-in draws centered -5.5 ms vs the v1 SRT-path
     // center of -3.8 ms (docs/bench-framesync.md).
     constexpr int64_t kSyncTrimBiasNs = 1'700'000;
     auto foldSyncBase = [](EngineSync::Counters& b, const EngineSync::Counters& c) {
@@ -694,7 +704,11 @@ void Engine::renderLoop(std::stop_token st) {
                 }
                 auto old = std::move(inputs_[size_t(idx)]);
                 auto& q = (idx % 2) ? vk_.xferDown() : vk_.xferUp();
-                if (spec.type == InputSpec::Type::Srt)
+                // Unassigned (the picker's BLACK) tears the source down
+                // without starting another one -- see start().
+                if (spec.ref.empty())
+                    inputs_[size_t(idx)] = std::make_unique<NullInput>();
+                else if (spec.type == InputSpec::Type::Srt)
                     inputs_[size_t(idx)] = std::make_unique<SrtInput>(
                         vk_, q, cuda_, spec.ref, idx, spec.syncFrames);
                 else if (spec.type == InputSpec::Type::Media)
@@ -716,9 +730,11 @@ void Engine::renderLoop(std::stop_token st) {
                     inputs_[size_t(idx)] = std::make_unique<DeckLinkInput>(
                         vk_, q, spec.ref, idx, spec.syncFrames);
 #endif
-                else
-                    inputs_[size_t(idx)] = std::make_unique<NdiReceiver>(
-                        vk_, q, *finder_, spec.ref, idx, spec.syncFrames);
+                else {
+                    KLOUD_LOGE("in%d: transport for '%s' was not built in; "
+                             "input will stay dark", idx, spec.ref.c_str());
+                    inputs_[size_t(idx)] = std::make_unique<NullInput>();
+                }
                 if (audio_) {
                     inputs_[size_t(idx)]->attachAudioSink(&audio_->channel(idx));
                     // New source: drop the auto trim now (the lane restarts
@@ -745,10 +761,11 @@ void Engine::renderLoop(std::stop_token st) {
                 }
                 relabel = true;
                 const char* kind =
-                    spec.type == InputSpec::Type::Srt     ? " (srt)"
-                    : spec.type == InputSpec::Type::Media ? " (media)"
-                    : spec.type == InputSpec::Type::Still ? " (still)"
-                                                         : "";
+                    spec.type == InputSpec::Type::Srt        ? " (srt)"
+                    : spec.type == InputSpec::Type::Media    ? " (media)"
+                    : spec.type == InputSpec::Type::Still    ? " (still)"
+                    : spec.type == InputSpec::Type::DeckLink ? " (sdi)"
+                                                             : " (omt)";
                 KLOUD_LOGI("in%d: replaced with '%s'%s", idx, spec.ref.c_str(),
                          kind);
                 // The dtor joins the capture thread (bounded by its receive
@@ -965,8 +982,8 @@ void Engine::renderLoop(std::stop_token st) {
         }
         retention_[fif].clear();
 
-        // -- pick a pack slot for the NDI output (skip if the ring is busy) --
-        const auto pickPackSlot = [&](NdiOutput* output,
+        // -- pick a pack slot for the OMT output (skip if the ring is busy) --
+        const auto pickPackSlot = [&](OmtOutput* output,
                                       gpu::Compositor::Feed feed,
                                       Stats::Counter& busyCounter) {
             if (!output) return -1;
@@ -984,10 +1001,10 @@ void Engine::renderLoop(std::stop_token st) {
             return -1;
         };
         const int packSlot =
-            pickPackSlot(ndiOut_.get(), gpu::Compositor::Feed::Program,
+            pickPackSlot(omtOut_.get(), gpu::Compositor::Feed::Program,
                          packSkipCtr);
         const int cleanPackSlot =
-            pickPackSlot(cleanNdiOut_.get(), gpu::Compositor::Feed::Clean,
+            pickPackSlot(cleanOmtOut_.get(), gpu::Compositor::Feed::Clean,
                          cleanPackSkipCtr);
         tj.packProgram = packSlot >= 0;
         tj.packClean = cleanPackSlot >= 0;
@@ -1077,13 +1094,21 @@ void Engine::renderLoop(std::stop_token st) {
 
         // -- pack readback on the down queue (chained on this render) --
         if (packSlot >= 0 || cleanPackSlot >= 0) {
-            if (packSlot >= 0)
+            // The sender timestamps this frame with the tick's presentation
+            // time, so the readback lag never skews its A/V; the packStamp
+            // release below is what publishes the pts.
+            const int64_t tickNs = clock_.nsForTick(n);
+            if (packSlot >= 0) {
+                omtOut_->stampSlot(packSlot, tickNs);
                 comp_->packStamp(packSlot, gpu::Compositor::Feed::Program)
                     .store(value, std::memory_order_release);
-            if (cleanPackSlot >= 0)
+            }
+            if (cleanPackSlot >= 0) {
+                cleanOmtOut_->stampSlot(cleanPackSlot, tickNs);
                 comp_->packStamp(cleanPackSlot,
                                  gpu::Compositor::Feed::Clean)
                     .store(value, std::memory_order_release);
+            }
             VkCommandBuffer dcmd = downBufs_[fif];
             vkResetCommandBuffer(dcmd, 0);
             vkBeginCommandBuffer(dcmd, &bi);

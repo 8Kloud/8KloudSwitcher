@@ -1,5 +1,10 @@
 # Program encoder backends (FFmpeg NVENC / direct NVENC)
 
+> **Note.** Written while NDI was the network transport. It was removed in
+> v1.1 (OMT/SDI/SRT only); references to NDI below describe the sources the
+> measurements were taken against. The design and the mechanics it
+> describes are transport-independent and unchanged.
+
 The v1 plan reserved an `IVideoEncoder` seam with `FfmpegNvenc` primary and
 `NvencDirect` as the fallback tripwire. This document records the seam as
 built, what the direct backend does differently, and what the two backends
