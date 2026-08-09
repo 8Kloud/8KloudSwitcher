@@ -50,11 +50,17 @@ public:
     // plus one of margin.
     static constexpr int kPackSlots = 5;
     static constexpr uint32_t kPackWriter = 1u << 31;  // exclusive writer bit
-    static constexpr int kFeedCount = 2;
+    static constexpr int kFeedCount = 3;
+    // NV12 packing (SRT out, recorders) only ever consumes the two show-format
+    // feeds; the multiview feed carries UYVY only.
+    static constexpr int kNvFeedCount = 2;
     static constexpr int kProxyW = 960, kProxyH = 544;
     static constexpr int kLabelRowH = 24;
 
-    enum class Feed : int { Program = 0, Clean = 1 };
+    // Program and Clean are show-format; Multiview is the mvW x mvH monitor
+    // wall the GUI shows, packed for an OMT sender. Per-feed geometry lives in
+    // feedFormat() -- nothing may assume a feed is show-sized.
+    enum class Feed : int { Program = 0, Clean = 1, Multiview = 2 };
 
     Compositor(VkEngine& eng, const VideoFormatDesc& show, int mvW, int mvH,
                int numInputs);
@@ -78,6 +84,7 @@ public:
         float pvwDskLevel[kDskCount] = {0.f, 0.f};
         bool packProgram = false;         // record UYVY pack (OMT out enabled)
         bool packClean = false;           // UYVY clean-feed OMT output
+        bool packMultiview = false;       // UYVY multiview OMT output
         bool packNv12 = false;            // record NV12 pack (SRT out enabled)
         bool packCleanNv12 = false;       // clean-feed recorder
     };
@@ -100,7 +107,9 @@ public:
         return static_cast<const uint8_t*>(
             packHost_[int(feed)][slot].mapped);
     }
-    size_t packBytes() const { return show_.frameBytes(); }
+    size_t packBytes(Feed feed = Feed::Program) const {
+        return feedFormat(feed).frameBytes();
+    }
     std::atomic<uint64_t>& packStamp(int slot, Feed feed = Feed::Program) {
         return packStamp_[int(feed)][slot];
     }
@@ -141,6 +150,9 @@ public:
 
     // NV12 pack buffers for SRT/recorders (exportable; importer owns fds).
     int nvPackExportFd(int fif, Feed feed = Feed::Program) {
+        // Only the show-format feeds have NV12 buffers (kNvFeedCount); asking
+        // for the multiview's would read off the end of the array.
+        if (int(feed) >= kNvFeedCount) return -1;
         return eng_.exportMemoryFd(packNvDev_[int(feed)][fif]);
     }
     size_t nvPackBytes() const { return size_t(show_.width) * show_.height * 3 / 2; }
@@ -149,6 +161,12 @@ public:
     void setLabelAtlas(Image atlas, std::vector<int> usedWidths);
 
     const VideoFormatDesc& showFormat() const { return show_; }
+    // Geometry of a pack feed: show format for Program/Clean, the multiview
+    // wall for Multiview. Senders take width/height/stride from here rather
+    // than from showFormat().
+    const VideoFormatDesc& feedFormat(Feed feed) const {
+        return feed == Feed::Multiview ? mvFormat_ : show_;
+    }
 
 private:
     struct TilePC;
@@ -194,6 +212,7 @@ private:
     VkEngine& eng_;
     VideoFormatDesc show_;
     int mvW_, mvH_, numInputs_;
+    VideoFormatDesc mvFormat_;  // mvW_ x mvH_ UYVY, show cadence
 
     Image program_[kFramesInFlight];
     Image clean_[kFramesInFlight];
@@ -209,7 +228,7 @@ private:
 
     Buffer readback_[kReadbackSlots];
     Buffer packDev_[kFeedCount][kFramesInFlight];
-    Buffer packNvDev_[kFeedCount][kFramesInFlight];
+    Buffer packNvDev_[kNvFeedCount][kFramesInFlight];
     Buffer packHost_[kFeedCount][kPackSlots];
     std::atomic<uint64_t> packStamp_[kFeedCount][kPackSlots]{};
     std::atomic<uint32_t> packPins_[kFeedCount][kPackSlots]{};

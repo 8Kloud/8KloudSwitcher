@@ -193,14 +193,30 @@ bool DeckLinkInput::open() {
                      index_, parsed_.mode.c_str());
     }
 
-    startStreams(forced, forced != nullptr);
+    const ModeInfo info = modeInfoFrom(forced);
     if (forced) forced->Release();
+    startStreams(info);
     return streaming_.load(std::memory_order_relaxed);
 }
 
-void DeckLinkInput::startStreams(void* displayMode, bool applyMode) {
+// Snapshot everything we will need from a display mode; the pointer itself is
+// only valid for as long as the SDK call that handed it to us.
+DeckLinkInput::ModeInfo DeckLinkInput::modeInfoFrom(void* displayMode) {
+    ModeInfo info;
     auto* mode = static_cast<IDeckLinkDisplayMode*>(displayMode);
+    if (!mode) return info;
+    info.displayMode = uint32_t(mode->GetDisplayMode());
+    info.valid = true;
+    BMDTimeValue dur = 0;
+    BMDTimeScale scale = 0;
+    if (mode->GetFrameRate(&dur, &scale) == S_OK && dur > 0) {
+        info.fpsN = int64_t(scale);
+        info.fpsD = int64_t(dur);
+    }
+    return info;
+}
 
+void DeckLinkInput::startStreams(const ModeInfo& info) {
     // Format detection is what makes SDI plug-and-play; without it we can only
     // capture the mode we were told to expect.
     bool detect = false;
@@ -212,7 +228,7 @@ void DeckLinkInput::startStreams(void* displayMode, bool applyMode) {
     }
 
     const BMDDisplayMode dm =
-        applyMode && mode ? mode->GetDisplayMode() : kSeedMode;
+        info.valid ? BMDDisplayMode(info.displayMode) : kSeedMode;
     const BMDVideoInputFlags flags =
         detect ? bmdVideoInputEnableFormatDetection : bmdVideoInputFlagDefault;
 
@@ -238,13 +254,9 @@ void DeckLinkInput::startStreams(void* displayMode, bool applyMode) {
         KLOUD_LOGW("in%d(decklink): audio input unavailable, video only",
                  index_);
 
-    if (mode) {
-        BMDTimeValue dur = 0;
-        BMDTimeScale scale = 0;
-        if (mode->GetFrameRate(&dur, &scale) == S_OK && dur > 0) {
-            fpsN_ = int64_t(scale);
-            fpsD_ = int64_t(dur);
-        }
+    if (info.fpsN > 0 && info.fpsD > 0) {
+        fpsN_.store(info.fpsN, std::memory_order_relaxed);
+        fpsD_.store(info.fpsD, std::memory_order_relaxed);
     }
 
     if (input_->StartStreams() != S_OK) {
@@ -277,24 +289,49 @@ void DeckLinkInput::close() {
     connected_.store(false, std::memory_order_relaxed);
 }
 
-// Card told us the incoming signal changed. Restart the streams on the new
-// mode; this is also how the very first real format arrives when the seed mode
-// was wrong (the common case).
+// Card told us the incoming signal changed. This is also how the very first
+// real format arrives when the seed mode was wrong (the common case).
+//
+// Runs on the SDK callback thread, so it does NOT restart the streams itself:
+// the worker thread can be inside close() freeing input_ at this exact moment
+// (its 3 s no-frames watchdog fires on precisely the unstable signals that
+// produce format changes), and this used to check input_ once and then
+// dereference it all the way through StopStreams/EnableVideoInput. Record the
+// mode, wake the worker, touch nothing it owns.
 void DeckLinkInput::onFormatChanged(unsigned events, void* newMode,
                                     unsigned flags) {
     (void)flags;
-    if (!(events & bmdVideoInputDisplayModeChanged) || !input_) return;
-    auto* mode = static_cast<IDeckLinkDisplayMode*>(newMode);
+    if (!(events & bmdVideoInputDisplayModeChanged) || !newMode) return;
 
+    const ModeInfo info = modeInfoFrom(newMode);
+    const char* mn = nullptr;
+    static_cast<IDeckLinkDisplayMode*>(newMode)->GetName(&mn);
+    KLOUD_LOGI("in%d(decklink): input format -> %s", index_,
+             takeString(mn).c_str());
+
+    {
+        std::lock_guard lk(formatM_);
+        pendingFormat_ = info;
+        formatPending_ = true;
+    }
+    formatCv_.notify_one();
+}
+
+// Worker thread: apply whatever the last format-change callback reported.
+void DeckLinkInput::applyPendingFormat() {
+    ModeInfo info;
+    {
+        std::lock_guard lk(formatM_);
+        if (!formatPending_) return;
+        formatPending_ = false;
+        info = pendingFormat_;
+    }
+    // Lock released: StopStreams can block until an in-flight callback
+    // returns, and that callback may be waiting on formatM_.
+    if (!input_) return;
     input_->StopStreams();
     input_->FlushStreams();
-    if (mode) {
-        const char* mn = nullptr;
-        mode->GetName(&mn);
-        KLOUD_LOGI("in%d(decklink): input format -> %s", index_,
-                 takeString(mn).c_str());
-    }
-    startStreams(mode, true);
+    startStreams(info);
 }
 
 void DeckLinkInput::onFrame(IDeckLinkVideoInputFrame* video,
@@ -370,8 +407,8 @@ void DeckLinkInput::onFrame(IDeckLinkVideoInputFrame* video,
     VideoFormatDesc d;
     d.width = int(video->GetWidth());
     d.height = int(video->GetHeight());
-    d.fpsN = fpsN_;
-    d.fpsD = fpsD_;
+    d.fpsN = fpsN_.load(std::memory_order_relaxed);
+    d.fpsD = fpsD_.load(std::memory_order_relaxed);
     d.pixfmt = PixFmt::UYVY8_422;  // bmdFormat8BitYUV *is* UYVY
     d.colorimetry = VideoFormatDesc::colorimetryForHeight(d.height);
     if (!d.valid()) return;
@@ -427,24 +464,38 @@ void DeckLinkInput::onFrame(IDeckLinkVideoInputFrame* video,
 
 // Open/reopen loop: the card may be missing, held by another process, or in a
 // profile without capture. Keep retrying so a later plug-in or profile switch
-// is picked up without restarting the switcher.
+// is picked up without restarting the switcher. This thread solely owns the
+// device pointers, so it also applies the format changes the SDK reports.
 void DeckLinkInput::run(std::stop_token st) {
     auto& reconnCtr =
         Stats::counter("in" + std::to_string(index_) + ".reconnects");
     bool everOpened = false;
 
+    // Sleep that a format change (or stop) cuts short, so deferring the
+    // restart to this thread costs latency measured in microseconds rather
+    // than a poll interval -- the seed mode is usually wrong, and this is the
+    // path that corrects it on the first frame.
+    const auto idle = [&](std::chrono::milliseconds d) {
+        std::unique_lock lk(formatM_);
+        formatCv_.wait_for(lk, st, d, [this] { return formatPending_; });
+    };
+
     while (!st.stop_requested()) {
         if (!streaming_.load(std::memory_order_relaxed)) {
             close();
+            {   // a stale pending change refers to the device we just closed
+                std::lock_guard lk(formatM_);
+                formatPending_ = false;
+            }
             if (open()) {
                 if (everOpened) reconnCtr.add();
                 everOpened = true;
             } else {
-                for (int i = 0; i < 10 && !st.stop_requested(); ++i)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                idle(std::chrono::milliseconds(1000));
                 continue;
             }
         }
+        applyPendingFormat();
         // Streams can stall without an error (card reset, profile change by
         // another app). Frames stop arriving entirely -- reopen after 3 s.
         const int64_t quiet =
@@ -454,7 +505,7 @@ void DeckLinkInput::run(std::stop_token st) {
             streaming_.store(false, std::memory_order_relaxed);
             continue;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        idle(std::chrono::milliseconds(100));
     }
     close();
 }

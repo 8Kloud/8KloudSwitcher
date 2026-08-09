@@ -101,25 +101,29 @@ void OmtOutput::sendAudio(const float* lr, int frames, int64_t firstSample) {
 }
 
 void OmtOutput::run(std::stop_token st) {
-    const std::string prefix =
-        feed_ == gpu::Compositor::Feed::Clean ? "out.omt.clean" : "out.omt";
+    std::string prefix = "out.omt";
+    if (feed_ == gpu::Compositor::Feed::Clean)
+        prefix = "out.omt.clean";
+    else if (feed_ == gpu::Compositor::Feed::Multiview)
+        prefix = "out.omt.mv";
     auto& sentCtr = Stats::counter(prefix + ".sent");
     auto& skipCtr = Stats::counter(prefix + ".droppedToLatest");
 
-    const auto& show = comp_.showFormat();
+    // Multiview is its own geometry, not the show's.
+    const auto& fmt = comp_.feedFormat(feed_);
     OMTMediaFrame vf{};
     vf.Type = OMTFrameType_Video;
     vf.Codec = OMTCodec_UYVY;
-    vf.Width = show.width;
-    vf.Height = show.height;
-    vf.Stride = show.width * 2;
-    vf.FrameRateN = int(show.fpsN);
-    vf.FrameRateD = int(show.fpsD);
-    vf.AspectRatio = float(show.width) / float(show.height);
-    vf.ColorSpace = show.colorimetry == Colorimetry::BT601
+    vf.Width = fmt.width;
+    vf.Height = fmt.height;
+    vf.Stride = fmt.width * 2;
+    vf.FrameRateN = int(fmt.fpsN);
+    vf.FrameRateD = int(fmt.fpsD);
+    vf.AspectRatio = float(fmt.width) / float(fmt.height);
+    vf.ColorSpace = fmt.colorimetry == Colorimetry::BT601
                         ? OMTColorSpace_BT601
                         : OMTColorSpace_BT709;
-    vf.DataLength = show.width * 2 * show.height;
+    vf.DataLength = fmt.width * 2 * fmt.height;
 
     uint64_t lastSent = 0;
 

@@ -28,6 +28,7 @@
 #include <QStandardPaths>
 
 #include <algorithm>
+#include <cmath>
 
 namespace kloud::ui {
 
@@ -44,6 +45,8 @@ bool ShowFile::State::cfgEquals(const EngineConfig& a, const EngineConfig& b) {
            a.omtOutName == b.omtOutName &&
            a.cleanOmtOut == b.cleanOmtOut &&
            a.cleanOmtOutName == b.cleanOmtOutName &&
+           a.mvOmtOut == b.mvOmtOut && a.mvOmtOutName == b.mvOmtOutName &&
+           a.mvW == b.mvW && a.mvH == b.mvH &&
            a.sdiOutRef == b.sdiOutRef &&
            a.cleanSdiOutRef == b.cleanSdiOutRef &&
            a.srtUrl == b.srtUrl &&
@@ -67,8 +70,14 @@ bool ShowFile::load(State& st) const {
     QSettings s(path_, QSettings::IniFormat);
 
     s.beginGroup(QStringLiteral("show"));
-    st.cfg.show.width = s.value("width", st.cfg.show.width).toInt();
-    st.cfg.show.height = s.value("height", st.cfg.show.height).toInt();
+    // Keep the defaults rather than refusing to start when a show file has
+    // been hand-edited into something Engine::start would reject.
+    const int w = s.value("width", st.cfg.show.width).toInt();
+    const int h = s.value("height", st.cfg.show.height).toInt();
+    if (w >= 2 && h >= 2 && !(w & 1) && !(h & 1) && w <= 8192 && h <= 8192) {
+        st.cfg.show.width = w;
+        st.cfg.show.height = h;
+    }
     const qlonglong fpsN =
         s.value("fpsN", qlonglong(st.cfg.show.fpsN)).toLongLong();
     const qlonglong fpsD =
@@ -89,6 +98,19 @@ bool ShowFile::load(State& st) const {
                 QString::fromStdString(st.cfg.cleanOmtOutName))
             .toString()
             .toStdString();
+    st.cfg.mvOmtOut = s.value("mvOmtOut", st.cfg.mvOmtOut).toBool();
+    st.cfg.mvOmtOutName =
+        s.value("mvOmtOutName", QString::fromStdString(st.cfg.mvOmtOutName))
+            .toString()
+            .toStdString();
+    // Guard the stored geometry: the pack ring and every OMT receiver size
+    // themselves from it once, at start.
+    const int mvW = s.value("mvW", st.cfg.mvW).toInt();
+    const int mvH = s.value("mvH", st.cfg.mvH).toInt();
+    if (mvW >= 320 && mvH >= 180 && mvW <= 7680 && mvH <= 4320) {
+        st.cfg.mvW = mvW;
+        st.cfg.mvH = mvH;
+    }
     st.cfg.sdiOutRef =
         s.value("sdiOut", QString::fromStdString(st.cfg.sdiOutRef))
             .toString()
@@ -168,7 +190,10 @@ bool ShowFile::load(State& st) const {
     for (int i = 0; i < c && i < int(st.chans.size()); ++i) {
         s.setArrayIndex(i);
         auto& ch = st.chans[size_t(i)];
-        ch.gain = s.value("gain", ch.gain).toFloat();
+        // Same range the control protocol enforces; a non-finite or wild
+        // stored gain would otherwise go straight into the mixer.
+        const float g = s.value("gain", ch.gain).toFloat();
+        if (std::isfinite(g)) ch.gain = std::clamp(g, 0.f, 4.f);
         ch.mute = s.value("mute", ch.mute).toBool();
         ch.solo = s.value("solo", ch.solo).toBool();
         ch.delayMs = s.value("delayMs", ch.delayMs).toInt();
@@ -205,6 +230,10 @@ void ShowFile::save(const State& st) const {
     s.setValue("cleanOmtOut", st.cfg.cleanOmtOut);
     s.setValue("cleanOmtOutName",
                QString::fromStdString(st.cfg.cleanOmtOutName));
+    s.setValue("mvOmtOut", st.cfg.mvOmtOut);
+    s.setValue("mvOmtOutName", QString::fromStdString(st.cfg.mvOmtOutName));
+    s.setValue("mvW", st.cfg.mvW);
+    s.setValue("mvH", st.cfg.mvH);
     s.setValue("sdiOut", QString::fromStdString(st.cfg.sdiOutRef));
     s.setValue("cleanSdiOut", QString::fromStdString(st.cfg.cleanSdiOutRef));
     s.setValue("srtOut", QString::fromStdString(st.cfg.srtUrl));

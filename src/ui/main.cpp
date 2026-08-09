@@ -86,6 +86,19 @@ int main(int argc, char** argv) {
             cfg.cleanOmtOut = true;
             cfg.cleanOmtOutName = args[++i].toStdString();
         }
+        else if (args[i] == QStringLiteral("--mv-omt-out") &&
+                 i + 1 < args.size()) {
+            cfg.mvOmtOut = true;
+            cfg.mvOmtOutName = args[++i].toStdString();
+        }
+        else if (args[i] == QStringLiteral("--multiview") &&
+                 i + 1 < args.size()) {
+            const auto parts = args[++i].split('x');
+            if (parts.size() == 2) {
+                cfg.mvW = parts[0].toInt();
+                cfg.mvH = parts[1].toInt();
+            }
+        }
         else if ((args[i] == QStringLiteral("--sdi-out") ||
                   args[i] == QStringLiteral("--clean-sdi-out")) &&
                  i + 1 < args.size()) {

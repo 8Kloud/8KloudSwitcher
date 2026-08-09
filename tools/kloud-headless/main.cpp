@@ -189,6 +189,17 @@ int main(int argc, char** argv) {
                 cfg.cleanOmtOut = true;
                 cfg.cleanOmtOutName = v;
             }
+        } else if (a == "--mv-omt-out") {
+            if (const char* v = next()) {
+                cfg.mvOmtOut = true;
+                cfg.mvOmtOutName = v;
+            }
+        } else if (a == "--multiview") {
+            int w = 0, h = 0;
+            const char* v = next();
+            if (!v || sscanf(v, "%dx%d", &w, &h) != 2) return 2;
+            cfg.mvW = w;
+            cfg.mvH = h;
         } else if (a == "--sdi-out" || a == "--clean-sdi-out") {
             // Bare index ("0") accepted, like --decklink-input.
             if (const char* v = next()) {
@@ -291,7 +302,8 @@ int main(int argc, char** argv) {
                     "[--record-bitrate KBPS] [--record-stop-after S] "
                     "[--clean-record-stop-after S] "
                     "[--no-omt-out] [--omt-out-name NAME] "
-                    "[--clean-omt-out NAME] "
+                    "[--clean-omt-out NAME] [--mv-omt-out NAME] "
+                    "[--multiview WxH] "
                     "[--sdi-out INDEX|decklink://REF] "
                     "[--clean-sdi-out INDEX|decklink://REF] "
                     "[--show WxH] [--duration S] [--dump-dir D] "

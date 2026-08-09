@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
 
 namespace kloud::ctl {
@@ -72,7 +73,14 @@ bool parseFloat(const std::string& s, float& out) {
     try {
         size_t pos = 0;
         out = std::stof(s, &pos);
-        return pos == s.size();
+        // Non-finite must die here, not at the call sites: "nan" parses
+        // cleanly and every range check downstream is a pair of comparisons,
+        // which are ALL false against NaN -- so `x < lo || x > hi` waves it
+        // through. A NaN gain poisons the mixer, a NaN tbar position wedges
+        // the transition (tbarPos_ >= 1 never trips) and std::clamp passes it
+        // straight through, and either one makes the state JSON emit a bare
+        // `nan` token that no client can parse.
+        return pos == s.size() && std::isfinite(out);
     } catch (...) {
         return false;
     }
@@ -371,6 +379,8 @@ std::string toJson(const Snapshot& s) {
     appendOutput(out, "omtOut", s.omtOut);
     out += ',';
     appendOutput(out, "cleanOmtOut", s.cleanOmtOut);
+    out += ',';
+    appendOutput(out, "mvOmtOut", s.mvOmtOut);
     out += ',';
     appendOutput(out, "sdiOut", s.sdiOut);
     out += ',';

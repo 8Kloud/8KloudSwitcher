@@ -188,8 +188,29 @@ void FileRecorder::encodeLoop(std::stop_token stop) {
             std::this_thread::sleep_for(std::chrono::microseconds(500));
             continue;
         }
+        // Bounded, unlike the obvious `while (!waitCompleted(...))`: the
+        // render thread logs a failed vkQueueSubmit and carries on, but still
+        // pushes this event, so a value that will never be signalled is
+        // reachable. An unbounded wait here hangs ~FileRecorder on the join,
+        // and with it Engine::stop() and every STOP RECORD. SrtOutput's twin
+        // loop bails on stop for the same reason; give up on the frame and
+        // keep the copied_ handshake moving so the render thread never
+        // stalls waiting for this fif.
+        constexpr int kMaxWaits = 50;  // 5 s
+        int waits = 0;
+        bool ready = true;
         while (!renderTL_.waitCompleted(event.value, 100'000'000)) {
             waitCounter.add();
+            if (++waits >= kMaxWaits || stop.stop_requested()) {
+                ready = false;
+                break;
+            }
+        }
+        if (!ready) {
+            copied_[event.fif].store(event.value, std::memory_order_release);
+            failed_.store(true, std::memory_order_relaxed);
+            Stats::counter(statsPrefix_ + ".renderWaitAbandoned").add();
+            continue;
         }
 
         packets.clear();

@@ -151,6 +151,7 @@ struct Snapshot {
     RecordControlState cleanRecord;
     OutputControlState omtOut;
     OutputControlState cleanOmtOut;
+    OutputControlState mvOmtOut;
     OutputControlState sdiOut;
     OutputControlState cleanSdiOut;
     bool srtConfigured = false;

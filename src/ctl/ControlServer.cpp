@@ -151,6 +151,8 @@ Snapshot ControlServer::snapshot() const {
     s.cleanOmtOut = {engine_.cleanOmtOutRequested(),
                      engine_.cleanOmtOutActive(), engine_.cleanOmtOutName(),
                      engine_.cleanOmtOutFrames()};
+    s.mvOmtOut = {engine_.mvOmtOutRequested(), engine_.mvOmtOutActive(),
+                  engine_.mvOmtOutName(), engine_.mvOmtOutFrames()};
     s.sdiOut = {!engine_.sdiOutRef().empty(), engine_.sdiOutOk(),
                 engine_.sdiOutRef(), engine_.sdiOutFrames()};
     s.cleanSdiOut = {!engine_.cleanSdiOutRef().empty(),

@@ -219,6 +219,8 @@ void EngineBridge::poll() {
     if (engine_.cleanOmtOutFrames())
         status += QStringLiteral("  clean-omt %1")
                       .arg(engine_.cleanOmtOutFrames());
+    if (engine_.mvOmtOutFrames())
+        status += QStringLiteral("  mv-omt %1").arg(engine_.mvOmtOutFrames());
     if (engine_.sdiOutFrames() || engine_.sdiOutOk())
         status += QStringLiteral("  sdi-out %1").arg(engine_.sdiOutFrames());
     if (engine_.cleanSdiOutFrames())

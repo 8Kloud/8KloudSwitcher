@@ -79,6 +79,9 @@ int64_t Engine::omtOutFrames() const { return omtOut_ ? omtOut_->framesSent() : 
 int64_t Engine::cleanOmtOutFrames() const {
     return cleanOmtOut_ ? cleanOmtOut_->framesSent() : 0;
 }
+int64_t Engine::mvOmtOutFrames() const {
+    return mvOmtOut_ ? mvOmtOut_->framesSent() : 0;
+}
 int64_t Engine::sdiOutFrames() const {
     return sdiOut_ ? sdiOut_->framesSent() : 0;
 }
@@ -234,6 +237,23 @@ Engine::RecordingState Engine::recordingStateImpl(bool clean) const {
 bool Engine::start(const EngineConfig& cfg) {
     cfg_ = cfg;
     for (auto& spec : cfg_.inputs) normalizeInputSpec(spec);
+    // Reject degenerate geometry before it reaches Vulkan: a zero or negative
+    // extent (`--show 0x0`, `--multiview 0x0`, a hand-edited show file) builds
+    // a zero-sized VkImage and zero-sized pack buffers, and the process dies
+    // in the driver with nothing pointing at the typo that caused it.
+    // Both extents must be even: UYVY packs two luma per word and the NV12
+    // pass dispatches at half height.
+    if (!cfg_.show.valid() || (cfg_.show.width & 1) || (cfg_.show.height & 1)) {
+        KLOUD_LOGE("show format %dx%d is invalid (need even extents, at least "
+                 "2x2)",
+                 cfg_.show.width, cfg_.show.height);
+        return false;
+    }
+    if (cfg_.mvW < 2 || cfg_.mvH < 2) {
+        KLOUD_LOGE("multiview %dx%d is invalid (need at least 2x2)", cfg_.mvW,
+                 cfg_.mvH);
+        return false;
+    }
     if (!vk_.init(cfg.validation)) return false;
 
     comp_ = std::make_unique<gpu::Compositor>(vk_, cfg_.show, cfg_.mvW, cfg_.mvH,
@@ -289,6 +309,12 @@ bool Engine::start(const EngineConfig& cfg) {
             cfg_.cleanOmtOutName, *comp_, readbackTL_,
             gpu::Compositor::Feed::Clean);
         if (!cleanOmtOut_->ok()) cleanOmtOut_.reset();
+    }
+    if (cfg_.mvOmtOut) {
+        mvOmtOut_ = std::make_unique<OmtOutput>(
+            cfg_.mvOmtOutName, *comp_, readbackTL_,
+            gpu::Compositor::Feed::Multiview);
+        if (!mvOmtOut_->ok()) mvOmtOut_.reset();
     }
     // SDI senders open asynchronously (the card may be busy at start), so
     // unlike the OMT ones there is nothing to test for here.
@@ -370,6 +396,13 @@ bool Engine::start(const EngineConfig& cfg) {
                                 const float* lr, int frames, int64_t s0) {
                 out->sendAudio(lr, frames, s0);
             });
+        // The multiview carries the master bus too: a remote operator watching
+        // the wall needs program audio with it.
+        if (mvOmtOut_)
+            audio_->addSink([out = mvOmtOut_.get()](const float* lr, int frames,
+                                                    int64_t s0) {
+                out->sendAudio(lr, frames, s0);
+            });
         if (sdiOut_)
             audio_->addSink(
                 [out = sdiOut_.get()](const float* lr, int frames, int64_t s0) {
@@ -402,17 +435,19 @@ bool Engine::start(const EngineConfig& cfg) {
     // samples from (see OmtOutput's timestamp contract).
     if (omtOut_) omtOut_->setClockOrigin(clock_.originNs());
     if (cleanOmtOut_) cleanOmtOut_->setClockOrigin(clock_.originNs());
+    if (mvOmtOut_) mvOmtOut_->setClockOrigin(clock_.originNs());
     if (sdiOut_) sdiOut_->setClockOrigin(clock_.originNs());
     if (cleanSdiOut_) cleanSdiOut_->setClockOrigin(clock_.originNs());
     if (audio_) audio_->start(clock_.originNs());
     renderThread_ = std::jthread([this](std::stop_token st) { renderLoop(st); });
     started_ = true;
     KLOUD_LOGI("engine started: show %dx%d @ %lld/%lld, %zu inputs, mv %dx%d, "
-             "omtOut=%s, cleanOmt=%s, sdiOut=%s, cleanSdi=%s",
+             "omtOut=%s, cleanOmt=%s, mvOmt=%s, sdiOut=%s, cleanSdi=%s",
              cfg_.show.width, cfg_.show.height, (long long)cfg_.show.fpsN,
              (long long)cfg_.show.fpsD, inputs_.size(), comp_->mvWidth(),
              comp_->mvHeight(), omtOut_ ? cfg_.omtOutName.c_str() : "off",
              cleanOmtOut_ ? cfg_.cleanOmtOutName.c_str() : "off",
+             mvOmtOut_ ? cfg_.mvOmtOutName.c_str() : "off",
              sdiOut_ ? cfg_.sdiOutRef.c_str() : "off",
              cleanSdiOut_ ? cfg_.cleanSdiOutRef.c_str() : "off");
     return true;
@@ -544,6 +579,7 @@ void Engine::stop() {
     srtOut_.reset();     // drains encoder, releases CUDA imports (device alive)
     cleanSdiOut_.reset();
     sdiOut_.reset();     // stops playback before the pack buffers go away
+    mvOmtOut_.reset();
     cleanOmtOut_.reset();
     omtOut_.reset();     // stops sender before its buffers go away
     if (renderTL_.lastReserved())
@@ -595,6 +631,7 @@ void Engine::renderLoop(std::stop_token st) {
     auto& packSkipCtr = Stats::counter("out.omt.packSlotBusy");
     auto& cleanPackSkipCtr =
         Stats::counter("out.omt.clean.packSlotBusy");
+    auto& mvPackSkipCtr = Stats::counter("out.omt.mv.packSlotBusy");
     std::vector<Stats::Counter*> repeatCtr(static_cast<size_t>(N));
     std::vector<Stats::Counter*> burstCtr(static_cast<size_t>(N));
     std::vector<Stats::Counter*> lateCtr(static_cast<size_t>(N));
@@ -1041,8 +1078,12 @@ void Engine::renderLoop(std::stop_token st) {
         const int cleanPackSlot = pickPackSlot(cleanOmtOut_ || cleanSdiOut_,
                                                gpu::Compositor::Feed::Clean,
                                                cleanPackSkipCtr);
+        const int mvPackSlot = pickPackSlot(mvOmtOut_ != nullptr,
+                                            gpu::Compositor::Feed::Multiview,
+                                            mvPackSkipCtr);
         tj.packProgram = packSlot >= 0;
         tj.packClean = cleanPackSlot >= 0;
+        tj.packMultiview = mvPackSlot >= 0;
 
         // -- Shared NV12 pack for SRT and recording: only when every active
         //    consumer has released this FIF's buffer. A slow consumer costs
@@ -1128,7 +1169,7 @@ void Engine::renderLoop(std::stop_token st) {
             cleanRecordNvPushed_[fif] = value;
 
         // -- pack readback on the down queue (chained on this render) --
-        if (packSlot >= 0 || cleanPackSlot >= 0) {
+        if (packSlot >= 0 || cleanPackSlot >= 0 || mvPackSlot >= 0) {
             // The senders timestamp this frame with the tick's presentation
             // time, so the readback lag never skews their A/V; the packStamp
             // release is what publishes the pts, and dropping the writer bit
@@ -1151,6 +1192,14 @@ void Engine::renderLoop(std::stop_token st) {
                 comp_->packReleaseWrite(cleanPackSlot,
                                         gpu::Compositor::Feed::Clean);
             }
+            if (mvPackSlot >= 0) {
+                mvOmtOut_->stampSlot(mvPackSlot, tickNs);
+                comp_->packStamp(mvPackSlot,
+                                 gpu::Compositor::Feed::Multiview)
+                    .store(value, std::memory_order_release);
+                comp_->packReleaseWrite(mvPackSlot,
+                                        gpu::Compositor::Feed::Multiview);
+            }
             VkCommandBuffer dcmd = downBufs_[fif];
             vkResetCommandBuffer(dcmd, 0);
             vkBeginCommandBuffer(dcmd, &bi);
@@ -1162,6 +1211,10 @@ void Engine::renderLoop(std::stop_token st) {
                 comp_->recordDownCopy(
                     dcmd, fif, cleanPackSlot,
                     gpu::Compositor::Feed::Clean);
+            if (mvPackSlot >= 0)
+                comp_->recordDownCopy(
+                    dcmd, fif, mvPackSlot,
+                    gpu::Compositor::Feed::Multiview);
             vkEndCommandBuffer(dcmd);
 
             const VkSemaphoreSubmitInfo dwait = gpu::VkEngine::timelineWait(

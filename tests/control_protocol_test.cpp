@@ -184,6 +184,24 @@ TEST_CASE("control: audio") {
     mustFail("AUDIO 1 MUTE");
 }
 
+TEST_CASE("control: non-finite floats are rejected, not range-checked") {
+    // Every float range check is `x < lo || x > hi`, and both comparisons are
+    // false against NaN -- so the range checks alone let it through. A NaN
+    // gain poisons the mixer, a NaN tbar wedges the transition (tbarPos_ >= 1
+    // never trips, and std::clamp passes NaN through untouched), and either
+    // makes the state JSON emit a bare `nan` that no client can parse.
+    for (const char* v : {"nan", "NaN", "-nan", "inf", "-inf", "INF"}) {
+        mustFail((std::string("AUDIO 1 GAIN ") + v).c_str());
+        mustFail((std::string("TBAR ") + v).c_str());
+        mustFail((std::string("TRANSITION mix 30 ") + v).c_str());
+    }
+    // Finite values in range still parse.
+    CHECK(must("AUDIO 1 GAIN 0").f == 0.f);
+    CHECK(must("AUDIO 1 GAIN 4").f == 4.f);
+    CHECK(must("TBAR 0.5").f == 0.5f);
+    CHECK(must("TRANSITION mix 30 0.25").f == 0.25f);
+}
+
 TEST_CASE("control: state JSON is stable, 1-based, and escaped") {
     kloud::ctl::Snapshot s;
     s.program = 0;

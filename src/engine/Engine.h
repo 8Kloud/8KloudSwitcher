@@ -64,6 +64,10 @@ struct EngineConfig {
     std::string omtOutName = "8Kloud Switcher PGM";
     bool cleanOmtOut = false;
     std::string cleanOmtOutName = "8Kloud Switcher CLEAN";
+    // The mvW x mvH monitor wall as an OMT source, labels and tally included:
+    // a remote operator position sees exactly what the GUI multiview shows.
+    bool mvOmtOut = false;
+    std::string mvOmtOutName = "8Kloud Switcher MV";
     // SDI program/clean output: a decklink:// ref each, empty = off. The card
     // cannot rescale, so the sub-device must offer the show format exactly.
     // Half duplex means a sub-device doing this cannot also capture.
@@ -167,6 +171,7 @@ public:
     int64_t skippedTicks() const { return skips_.load(std::memory_order_relaxed); }
     int64_t omtOutFrames() const;
     int64_t cleanOmtOutFrames() const;
+    int64_t mvOmtOutFrames() const;
     int64_t sdiOutFrames() const;
     int64_t cleanSdiOutFrames() const;
 
@@ -177,12 +182,15 @@ public:
     // own.
     bool omtOutActive() const { return omtOut_ != nullptr; }
     bool cleanOmtOutActive() const { return cleanOmtOut_ != nullptr; }
+    bool mvOmtOutActive() const { return mvOmtOut_ != nullptr; }
     bool sdiOutOk() const;
     bool cleanSdiOutOk() const;
     bool omtOutRequested() const { return cfg_.omtOut; }
     bool cleanOmtOutRequested() const { return cfg_.cleanOmtOut; }
+    bool mvOmtOutRequested() const { return cfg_.mvOmtOut; }
     const std::string& omtOutName() const { return cfg_.omtOutName; }
     const std::string& cleanOmtOutName() const { return cfg_.cleanOmtOutName; }
+    const std::string& mvOmtOutName() const { return cfg_.mvOmtOutName; }
     const std::string& sdiOutRef() const { return cfg_.sdiOutRef; }
     const std::string& cleanSdiOutRef() const { return cfg_.cleanSdiOutRef; }
     int64_t srtFramesEncoded() const;
@@ -203,6 +211,7 @@ private:
     std::vector<std::unique_ptr<IInputSource>> inputs_;
     std::unique_ptr<OmtOutput> omtOut_;
     std::unique_ptr<OmtOutput> cleanOmtOut_;
+    std::unique_ptr<OmtOutput> mvOmtOut_;
     std::unique_ptr<DeckLinkOutput> sdiOut_;
     std::unique_ptr<DeckLinkOutput> cleanSdiOut_;
     media::CudaCtx cuda_;

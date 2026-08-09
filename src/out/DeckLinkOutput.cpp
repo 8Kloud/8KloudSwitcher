@@ -345,7 +345,7 @@ bool DeckLinkOutput::writeFrame(IDeckLinkMutableVideoFrame* frame,
 
     void* dst = nullptr;
     if (buf->GetBytes(&dst) != S_OK || !dst) return false;
-    memcpy(dst, src, comp_.packBytes());
+    memcpy(dst, src, comp_.packBytes(feed_));
     return true;
 }
 

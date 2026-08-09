@@ -99,6 +99,11 @@ constexpr int kBorder = 3;
 Compositor::Compositor(VkEngine& eng, const VideoFormatDesc& show, int mvW,
                        int mvH, int numInputs)
     : eng_(eng), show_(show), mvW_(mvW & ~1), mvH_(mvH & ~1), numInputs_(numInputs) {
+    // The multiview feed carries the same cadence as the show (it is packed
+    // from the same tick) but its own geometry. BT.709 regardless of the show:
+    // the tile shader has already converted every source to display RGB.
+    mvFormat_ = VideoFormatDesc{mvW_, mvH_, show_.fpsN, show_.fpsD,
+                                PixFmt::UYVY8_422, Colorimetry::BT709};
     static_assert(sizeof(CompositePC) == 156);
     static_assert(sizeof(TilePC) == 56);
     // 152 exceeds the 128-byte Vulkan minimum; NVIDIA guarantees 256. Fail
@@ -127,7 +132,8 @@ Compositor::Compositor(VkEngine& eng, const VideoFormatDesc& show, int mvW,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
         multiview_[f] = eng_.createImage2D(
             uint32_t(mvW_), uint32_t(mvH_), VK_FORMAT_R8G8B8A8_UNORM,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         programProxy_[f] = eng_.createImage2D(
             kProxyW, kProxyH, VK_FORMAT_R8G8B8A8_UNORM,
@@ -142,27 +148,27 @@ Compositor::Compositor(VkEngine& eng, const VideoFormatDesc& show, int mvW,
                                        VK_IMAGE_USAGE_SAMPLED_BIT);
         proxyInit_[f].assign(size_t(numInputs_) + 1, false);
 
-        for (int feed = 0; feed < kFeedCount; ++feed) {
+        for (int feed = 0; feed < kFeedCount; ++feed)
             packDev_[feed][f] = eng_.createBuffer(
-                show_.frameBytes(),
+                packBytes(Feed(feed)),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        for (int feed = 0; feed < kNvFeedCount; ++feed)
             packNvDev_[feed][f] = eng_.createBuffer(
                 nvPackBytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, 0,
                 /*exportable=*/eng_.hasExternalMemoryFd);
-        }
     }
     for (auto& rb : readback_)
         rb = eng_.createBuffer(readbackBytes(), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
-    for (auto& feed : packHost_)
-        for (auto& pb : feed)
+    for (int feed = 0; feed < kFeedCount; ++feed)
+        for (auto& pb : packHost_[feed])
             pb = eng_.createBuffer(
-                show_.frameBytes(), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                packBytes(Feed(feed)), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                 VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
@@ -212,10 +218,10 @@ Compositor::~Compositor() {
         eng_.destroyImage(programProxy_[f]);
         eng_.destroyImage(previewMon_[f]);
         for (auto& p : inputProxy_[f]) eng_.destroyImage(p);
-        for (int feed = 0; feed < kFeedCount; ++feed) {
+        for (int feed = 0; feed < kFeedCount; ++feed)
             eng_.destroyBuffer(packDev_[feed][f]);
+        for (int feed = 0; feed < kNvFeedCount; ++feed)
             eng_.destroyBuffer(packNvDev_[feed][f]);
-        }
     }
     for (auto& b : readback_) eng_.destroyBuffer(b);
     for (auto& feed : packHost_)
@@ -590,7 +596,11 @@ void Compositor::record(VkCommandBuffer cmd, const TickJob& job, int fif,
                 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT, VK_IMAGE_LAYOUT_GENERAL,
                 VK_IMAGE_LAYOUT_GENERAL);
 
+    // The pack shader reads the source with texelFetch, so it is indifferent to
+    // whether the image is the RGBA16F program or the RGBA8 multiview -- only
+    // the geometry in the push constants changes.
     const auto packUyvy = [&](const Image& source, Feed feed) {
+        const VideoFormatDesc& fmt = feedFormat(feed);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pack_.pipe);
         VkDescriptorImageInfo srcInfo{eng_.linearSampler(), source.view,
                                       VK_IMAGE_LAYOUT_GENERAL};
@@ -604,12 +614,12 @@ void Compositor::record(VkCommandBuffer cmd, const TickJob& job, int fif,
                  0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &dstInfo, nullptr};
         eng_.cmdPushDescriptorSet(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pack_.layout,
                                   0, 2, pw);
-        PackPC ppc{show_.width, show_.height, show_.width / 2,
-                   show_.colorimetry == Colorimetry::BT601 ? 1 : 0};
+        PackPC ppc{fmt.width, fmt.height, fmt.width / 2,
+                   fmt.colorimetry == Colorimetry::BT601 ? 1 : 0};
         vkCmdPushConstants(cmd, pack_.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof(ppc), &ppc);
-        vkCmdDispatch(cmd, uint32_t((show_.width / 2 + 15) / 16),
-                      uint32_t((show_.height + 15) / 16), 1);
+        vkCmdDispatch(cmd, uint32_t((fmt.width / 2 + 15) / 16),
+                      uint32_t((fmt.height + 15) / 16), 1);
     };
     if (job.packProgram) packUyvy(prog, Feed::Program);
     if (job.packClean) packUyvy(clean, Feed::Clean);
@@ -764,6 +774,18 @@ void Compositor::record(VkCommandBuffer cmd, const TickJob& job, int fif,
             borderTiles(cmd, x, y, w, h, kTallyGreen, fif);
     }
 
+    // -- multiview UYVY pack (OMT multiview out). Sampled, not copied, so it
+    //    needs its own tiles-written -> shader-read barrier; the readback copy
+    //    below only reads the image too, so the two never conflict. --
+    if (job.packMultiview) {
+        barrier(cmd, mv.img, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT, VK_IMAGE_LAYOUT_GENERAL,
+                VK_IMAGE_LAYOUT_GENERAL);
+        packUyvy(mv, Feed::Multiview);
+    }
+
     // tiles written -> copy out
     barrier(cmd, mv.img, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
@@ -784,7 +806,7 @@ void Compositor::record(VkCommandBuffer cmd, const TickJob& job, int fif,
 void Compositor::recordDownCopy(VkCommandBuffer cmd, int fif, int packSlot,
                                 Feed feed) {
     VkBufferCopy2 region{VK_STRUCTURE_TYPE_BUFFER_COPY_2};
-    region.size = show_.frameBytes();
+    region.size = packBytes(feed);
     VkCopyBufferInfo2 ci{VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2};
     ci.srcBuffer = packDev_[int(feed)][fif].buf;
     ci.dstBuffer = packHost_[int(feed)][packSlot].buf;

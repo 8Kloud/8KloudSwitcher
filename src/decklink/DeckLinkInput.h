@@ -22,6 +22,8 @@
 
 #pragma once
 #include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -46,8 +48,9 @@ namespace kloud {
 //
 // Unlike the network inputs there is no capture thread of our own: the SDK
 // delivers frames on its own callback thread and we do the staging copy +
-// upload submit there, exactly the work OmtInput does on its own. An
-// open thread runs only to (re)open the device when it is absent or busy.
+// upload submit there, exactly the work OmtInput does on its own. A worker
+// thread (re)opens the device when it is absent or busy, and is the ONLY
+// thread that ever touches device_/input_/delegate_ -- see onFormatChanged.
 //
 // Frame sync gets a real hardware clock here: GetHardwareReferenceTimestamp is
 // the card's own reference, so pts is never synthesized (senderClock = true).
@@ -83,10 +86,23 @@ public:
     void onFormatChanged(unsigned events, void* newMode, unsigned flags);
 
 private:
+    // What EnableVideoInput needs, as plain values. The SDK's
+    // IDeckLinkDisplayMode* is only valid inside the callback that delivered
+    // it, and the restart it triggers now runs on another thread entirely.
+    // displayMode is a BMDDisplayMode (a 32-bit FourCC), kept untyped so this
+    // header does not have to pull in the SDK.
+    struct ModeInfo {
+        uint32_t displayMode = 0;
+        int64_t fpsN = 0, fpsD = 0;  // 0 = leave the current rate alone
+        bool valid = false;          // false = seed mode, i.e. auto-detect
+    };
+    static ModeInfo modeInfoFrom(void* displayMode);
+
     void run(std::stop_token st);
-    bool open();          // open thread only
-    void close();         // open thread / dtor only
-    void startStreams(void* displayMode, bool applyMode);
+    bool open();                              // worker thread only
+    void close();                             // worker thread / dtor only
+    void startStreams(const ModeInfo& mode);  // worker thread only
+    void applyPendingFormat();                // worker thread only
 
     gpu::VkEngine& eng_;
     gpu::Queue& queue_;
@@ -94,19 +110,35 @@ private:
     const DeckLinkRef parsed_;
     int index_;
 
+    // Worker-thread owned, every one of them. Nothing on the SDK callback
+    // thread may read or write these: close() frees them, and a callback
+    // holding a stale pointer across that is a use-after-free.
     IDeckLink* device_ = nullptr;
     IDeckLinkInput* input_ = nullptr;
     class Delegate;
     Delegate* delegate_ = nullptr;
 
-    // Open-thread owned; keeps the retry loop from spamming the log.
+    // Format-change handoff. onFormatChanged runs on the SDK callback thread,
+    // so it records what the card reported and wakes the worker instead of
+    // restarting the streams itself. No lock is ever held across an SDK call:
+    // StopStreams can block on an in-flight callback, and a callback blocked
+    // on formatM_ would deadlock against it.
+    std::mutex formatM_;
+    std::condition_variable_any formatCv_;
+    ModeInfo pendingFormat_;
+    bool formatPending_ = false;
+
+    // Worker-thread owned; keeps the retry loop from spamming the log.
     int64_t lastEnableLogNs_ = 0;
     bool everLoggedOpen_ = false;
 
     // Callback-thread owned.
     std::shared_ptr<gpu::UploadRing> ring_;
-    int64_t fpsN_ = 60000, fpsD_ = 1001;
     uint64_t pubSeq_ = 0;
+    // Written by startStreams, which runs on the open thread via open() AND on
+    // the SDK callback thread via onFormatChanged; read by onFrame. Not
+    // "callback-thread owned" despite sitting next to things that are.
+    std::atomic<int64_t> fpsN_{60000}, fpsD_{1001};
 
     Mailbox mailbox_;
     const int syncFrames_;

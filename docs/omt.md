@@ -2,9 +2,9 @@
 
 OMT (vMix's open, MIT-licensed transport — VMX intra codec over TCP, mDNS
 discovery) is 8Kloud Switcher's network transport, used for both input and
-the program/clean senders. Support is optional at build time: CMake enables
-it when `third_party/omt/` is populated, and without it there is no OMT
-input or program output.
+the program/clean/multiview senders. Support is optional at build time: CMake
+enables it when `third_party/omt/` is populated, and without it there is no
+OMT input or program output.
 
 ## Getting the libraries
 
@@ -54,6 +54,31 @@ from the same directory (rpath is wired by CMake).
 - Test sender: `kloud-testgen --omt [--noise] [--size WxH]` (VMX encode
   happens in-process; the 5 s stats line reports encoder ms/frame, Mbps,
   and transport-envelope drops).
+
+## OMT outputs
+
+Three senders, each an independent OMT source with the master audio bus
+embedded. All are created before any input receiver — see the avahi ordering
+note in `Engine::start`; a sender cannot be brought up mid-show.
+
+| Sender | Enable | Content |
+| --- | --- | --- |
+| Program | on by default (`--no-omt-out`, `--omt-out-name NAME`) | show-format program, DSKs included |
+| Clean | `--clean-omt-out NAME` | show-format program without DSK graphics |
+| Multiview | `--mv-omt-out NAME` | the monitor wall, labels and tally borders included |
+
+The multiview sender carries exactly what the GUI multiview shows, so a
+remote operator position sees the same wall: input matrix on the left, the
+PROGRAM and look-ahead PREVIEW monitors stacked on the right, red/green tally
+on both. Its geometry is the multiview's, not the show's — `--multiview WxH`
+(default 1920x1080, stored per show as `mvW`/`mvH`). Cost is one extra UYVY
+pack of that size per tick plus the VMX encode: ~4 MB/frame at 1080p, which
+is noise next to an 8K program path.
+
+Receivers negotiate it like any other source: `kloud-headless --omt-input
+"HOSTNAME (MV NAME)"`. Verified end to end on this box by loopback — 1080p59.94,
+zero drops over ~600 frames, colors and tally borders byte-accurate through
+pack → VMX → decode.
 
 ## Limits measured on this box
 

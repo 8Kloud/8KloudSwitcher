@@ -362,6 +362,112 @@ TEST_CASE("DSK keying: straight, premult, opaque fallback, FTB over keyers") {
     eng.destroyTimeline(tl);
 }
 
+TEST_CASE("multiview pack carries the monitor wall at its own geometry") {
+    GpuFixture fx;
+    if (!fx.ok) SKIP("no Vulkan device");
+    auto& eng = fx.eng;
+
+    VideoFormatDesc d;
+    d.width = 64;
+    d.height = 36;
+    d.colorimetry = Colorimetry::BT709;
+
+    auto ring = std::make_shared<gpu::UploadRing>(eng, d, eng.xferUp());
+    const int slot = ring->acquire();
+    REQUIRE(slot >= 0);
+    // 75% red, as in the conversion case above.
+    pattern::fillRectUYVY(ring->stagingPtr(slot), int(d.rowBytes()), 0, 0,
+                          d.width, d.height, 51, 109, 212);
+    const uint64_t upVal = ring->submit(slot);
+    REQUIRE(ring->timeline().waitCompleted(upVal, 1'000'000'000));
+    auto frame = std::make_shared<const gpu::GpuFrame>(ring, slot, upVal);
+
+    // Deliberately larger than the show: the multiview feed must size itself
+    // from mvW/mvH, never from the show format.
+    const int mvW = 128, mvH = 72;
+    gpu::Compositor comp(eng, d, mvW, mvH, 1);
+    REQUIRE(comp.packBytes(gpu::Compositor::Feed::Multiview) ==
+            size_t(mvW) * mvH * 2);
+    REQUIRE(comp.packBytes(gpu::Compositor::Feed::Program) == d.frameBytes());
+
+    gpu::Compositor::TickJob job;
+    job.a = frame.get();
+    job.b = frame.get();
+    job.mvInputs.push_back({frame.get()});
+    job.packMultiview = true;
+
+    VkCommandPool pool = eng.createCommandPool(eng.gfx().family);
+    VkCommandBufferAllocateInfo cai{
+        VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    cai.commandPool = pool;
+    cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cai.commandBufferCount = 2;
+    VkCommandBuffer cmd[2]{};
+    vkAllocateCommandBuffers(eng.device(), &cai, cmd);
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+
+    vkBeginCommandBuffer(cmd[0], &bi);
+    comp.record(cmd[0], job, 0, 0);
+    vkEndCommandBuffer(cmd[0]);
+    gpu::Timeline timeline = eng.createTimeline();
+    const uint64_t rendered = timeline.reserve();
+    const VkSemaphoreSubmitInfo renderSignal = gpu::VkEngine::timelineSignal(
+        timeline, rendered, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+    gpu::VkEngine::SubmitDesc renderSubmit;
+    renderSubmit.cmd = cmd[0];
+    renderSubmit.signalInfos = {&renderSignal, 1};
+    REQUIRE(eng.submit(eng.gfx(), renderSubmit) == VK_SUCCESS);
+
+    vkBeginCommandBuffer(cmd[1], &bi);
+    comp.recordDownCopy(cmd[1], 0, 0, gpu::Compositor::Feed::Multiview);
+    vkEndCommandBuffer(cmd[1]);
+    const uint64_t copied = timeline.reserve();
+    const VkSemaphoreSubmitInfo copyWait = gpu::VkEngine::timelineWait(
+        timeline, rendered, VK_PIPELINE_STAGE_2_COPY_BIT);
+    const VkSemaphoreSubmitInfo copySignal = gpu::VkEngine::timelineSignal(
+        timeline, copied, VK_PIPELINE_STAGE_2_COPY_BIT);
+    gpu::VkEngine::SubmitDesc copySubmit;
+    copySubmit.cmd = cmd[1];
+    copySubmit.waits = {&copyWait, 1};
+    copySubmit.signalInfos = {&copySignal, 1};
+    REQUIRE(eng.submit(eng.gfx(), copySubmit) == VK_SUCCESS);
+    REQUIRE(timeline.waitCompleted(copied, 2'000'000'000));
+
+    const uint8_t* mv =
+        comp.packPtr(0, gpu::Compositor::Feed::Multiview);
+    // Macropixel start for (x, y), UYVY: U Y0 V Y1.
+    auto at = [&](int x, int y) {
+        return mv + (((size_t(y) * mvW + x) * 2) & ~3ULL);
+    };
+    // PROGRAM monitor: right half, upper block. Red survives the RGB round
+    // trip through the tile shader and back out to UYVY.
+    {
+        const uint8_t* p = at(96, 17);
+        INFO("U=" << int(p[0]) << " Y=" << int(p[1]) << " V=" << int(p[2]));
+        CHECK(near(p[0], 109, 6));
+        CHECK(near(p[1], 51, 6));
+        CHECK(near(p[2], 212, 6));
+    }
+    // Input cell 0: left half, above its 24px label row.
+    {
+        const uint8_t* p = at(32, 18);
+        CHECK(near(p[0], 109, 6));
+        CHECK(near(p[1], 51, 6));
+        CHECK(near(p[2], 212, 6));
+    }
+    // The label strip under the input cell has no atlas in this fixture, so it
+    // stays the cleared background -- limited-range black, not zero.
+    {
+        const uint8_t* p = at(32, 50);
+        CHECK(near(p[1], 16, 3));
+    }
+
+    vkDestroyCommandPool(eng.device(), pool, nullptr);
+    eng.destroyTimeline(timeline);
+    frame.reset();
+    ring.reset();
+}
+
 TEST_CASE("clean feed pack excludes DSK graphics") {
     GpuFixture fx;
     if (!fx.ok) SKIP("no Vulkan device");
