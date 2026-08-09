@@ -107,6 +107,27 @@ the no-signal placeholder; `in<N>.noSignal` counts these frames.
 changing the profile) the input closes and reopens, counted by
 `in<N>.reconnects`.
 
+## Verified by loopback
+
+With a BNC from SDI 1 to SDI 2, the card's own output feeds its own input, which
+exercises both directions at once:
+
+```sh
+./build/kloud-headless --sdi-out 0 --decklink-input 1 --show 1920x1080 --duration 20
+```
+
+Measured 2026-08-09 on the 8K Pro at 1080p59.94, program carrying a
+`kloud-testgen` pattern over OMT: input locked ~240 ms after playback started
+and auto-detected `1920x1080 @ 60000/1001` with no mode hint; 1304 frames
+captured with **zero drops** against 1321 sent; embedded audio arrived on the
+capture (1,052,254 sample frames, tracking the source lane); and the multiview
+showed the returned picture matching program, with the moving bar offset by the
+loop delay. `in<N>.noSignal` counted 11 frames before lock, which is the
+pre-playback interval and nothing more.
+
+That covers the paths a signal-less card cannot: the `IDeckLinkVideoBuffer`
+pixel read, format auto-detection, and audio capture.
+
 ## Bandwidth
 
 8K UYVY at 59.94 is ~4.0 GB/s DMA into host RAM, then ~4.0 GB/s again uploading
