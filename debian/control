@@ -1,0 +1,48 @@
+Source: 8kloud-switcher
+Section: video
+Priority: optional
+Maintainer: Devin Block <devin@devinblock.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.25),
+               ninja-build,
+               pkgconf,
+               glslc,
+               libvulkan-dev,
+               libavcodec-dev,
+               libavformat-dev,
+               libavutil-dev,
+               libavfilter-dev,
+               libswresample-dev,
+               libswscale-dev,
+               libffmpeg-nvenc-dev,
+               qt6-base-dev,
+               catch2
+# Also required at build time, but deliberately not listed: the CUDA toolkit
+# headers (cuda.h). Ubuntu 26.04 only packages nvidia-cuda-dev at 12.4, which
+# is far behind the 610-series driver this targets, so install the toolkit
+# from NVIDIA's runfile into /usr/local/cuda. CMake accepts either location.
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/moocowsheep/8KloudSwitcher
+
+Package: 8kloud-switcher
+Architecture: amd64
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         avahi-daemon,
+         libnvidia-encode-610 | libnvidia-encode-595 | libnvidia-encode-580 | libnvidia-encode
+Recommends: vulkan-validationlayers
+Suggests: desktopvideo
+Description: Live video switcher for Linux and NVIDIA, up to 8K 59.94p
+ 8Kloud Switcher takes OMT, SDI (Blackmagic DeckLink) and SRT sources, mixes
+ them on the GPU through Vulkan compute, and sends program out over OMT, SDI
+ and SRT (HEVC via NVENC) while recording HEVC/AAC Matroska locally.
+ .
+ It carries a full audio mixer with per-input frame sync, two alpha downstream
+ keyers, paced local clip playlists, still-image inputs, a clean feed without
+ DSK graphics, and a Qt 6 GUI with a Vulkan multiview. A plain-text TCP
+ control port drives it remotely, with a Bitfocus Companion module supplied.
+ .
+ This package ships the GUI (8kloud-switcher), the headless engine
+ (kloud-headless) and the bench tools (kloud-testgen, kloud-latmeter).
+ It requires an NVIDIA GPU with a current proprietary driver.

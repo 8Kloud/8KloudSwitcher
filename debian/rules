@@ -1,0 +1,62 @@
+#!/usr/bin/make -f
+
+# LTO is off: the project links several static archives into each binary, and
+# GCC 15's -flto=auto -ffat-lto-objects drops inline std::string symbols across
+# those archives, so the link fails with undefined references to operator+ and
+# __to_chars_10_impl. Hardening stays on.
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
+
+# libcuda.so.1 and libnvidia-encode.so.1 come from the proprietary driver, which
+# ships no shlibs control data; the Depends on the driver package is declared by
+# hand in debian/control instead.
+export DEB_DH_SHLIBDEPS_ARGS_ALL = --dpkg-shlibdeps-params=--ignore-missing-info
+
+# The package links and ships its own LGPL-2.1+ FFmpeg. It must not link the
+# distribution's, which is configured --enable-gpl and so would force the whole
+# binary to be conveyed under the GPL -- incompatible with this package's
+# MPL-2.0 terms combined with the proprietary CUDA/NVENC and DeckLink runtimes.
+#
+# It is built by packaging/build-ffmpeg-lgpl.sh rather than here, because that
+# script clones FFmpeg and nv-codec-headers and a package build must not reach
+# the network. Run it once before dpkg-buildpackage.
+FFMPEG_PREFIX = $(CURDIR)/build/ffmpeg-lgpl
+
+STAGE_LIBDIR = debian/8kloud-switcher/usr/lib/$(DEB_HOST_MULTIARCH)/8kloud-switcher
+
+%:
+	dh $@ --buildsystem=cmake+ninja
+
+override_dh_auto_configure:
+	@test -f $(FFMPEG_PREFIX)/lib/pkgconfig/libavcodec.pc || { \
+	    echo "ERROR: no LGPL FFmpeg at $(FFMPEG_PREFIX)."; \
+	    echo "       Run packaging/build-ffmpeg-lgpl.sh first."; \
+	    exit 1; }
+	dh_auto_configure -- \
+	    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+	    -DCMAKE_INSTALL_DOCDIR=share/doc/8kloud-switcher \
+	    -DKLOUD_FFMPEG_PREFIX=$(FFMPEG_PREFIX) \
+	    -DKLOUD_BUILD_TESTS=ON
+
+# The GPU tests need a real NVIDIA device and a Vulkan queue, which a build
+# chroot does not have. Run the CPU-only suites and let the rest be verified
+# on hardware with ctest after install.
+override_dh_auto_test:
+	cd obj-* && ctest --output-on-failure \
+	    -E 'gpu|interop|nvenc|^ui: ' || echo "ctest: skipped/failed off-GPU builder"
+
+# Everything in the private libdir is ours to ship and resolve by RPATH: it
+# must not generate a dependency on a system package, and must not register
+# shlibs of its own.
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(CURDIR)/$(STAGE_LIBDIR) \
+	    -Xlibomt.so -Xlibvmx.so \
+	    -Xlibavcodec.so -Xlibavformat.so -Xlibavutil.so \
+	    -Xlibavfilter.so -Xlibswresample.so -Xlibswscale.so \
+	    -- --ignore-missing-info
+
+override_dh_makeshlibs:
+	dh_makeshlibs --no-scripts -Xlibomt.so -Xlibvmx.so -X/8kloud-switcher/
+
+override_dh_dwz:
+	# libomt.so is a NativeAOT binary; dwz chokes on its debug sections.
+	dh_dwz -Xlibomt.so

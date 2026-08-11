@@ -62,20 +62,64 @@ target_compile_options(kloud_gpu PRIVATE -Wall -Wextra -Wno-missing-field-initia
 add_dependencies(kloud_gpu kloud_shaders)
 
 # -- CUDA driver API (libcuda from the driver; headers from the toolkit) --
-find_library(CUDA_DRIVER_LIB cuda HINTS /usr/lib /usr/lib64)
-find_path(CUDA_DRIVER_INC cuda.h HINTS /opt/cuda/include /usr/local/cuda/include)
+# Hints cover Debian/Ubuntu multiarch (libcuda from the nvidia driver package,
+# cuda.h from nvidia-cuda-toolkit or a /usr/local/cuda runfile install) as well
+# as Arch's /opt/cuda and the /usr/lib64 distros.
+find_library(CUDA_DRIVER_LIB cuda
+  HINTS /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE} /usr/lib /usr/lib64
+        /usr/local/cuda/lib64/stubs /opt/cuda/lib64/stubs)
+find_path(CUDA_DRIVER_INC cuda.h
+  HINTS /usr/local/cuda/include /opt/cuda/include /usr/include)
 if(NOT CUDA_DRIVER_LIB OR NOT CUDA_DRIVER_INC)
-  message(FATAL_ERROR "CUDA driver API not found (libcuda.so + cuda.h)")
+  message(FATAL_ERROR "CUDA driver API not found (libcuda.so + cuda.h). "
+                      "On Debian/Ubuntu install the NVIDIA driver plus "
+                      "nvidia-cuda-toolkit (or set CUDA_DRIVER_INC).")
 endif()
+message(STATUS "CUDA driver: ${CUDA_DRIVER_LIB} (headers: ${CUDA_DRIVER_INC})")
 add_library(CudaDriver INTERFACE)
 target_link_libraries(CudaDriver INTERFACE ${CUDA_DRIVER_LIB})
 target_include_directories(CudaDriver SYSTEM INTERFACE ${CUDA_DRIVER_INC})
 
 find_package(PkgConfig REQUIRED)
+
+# -- FFmpeg. Point KLOUD_FFMPEG_PREFIX at an LGPL build (see
+# packaging/build-ffmpeg-lgpl.sh) for anything that gets distributed: a distro
+# FFmpeg is configured --enable-gpl, which makes it GPL-2.0-or-later and would
+# force this MPL-2.0 project's binaries to be conveyed under the GPL -- which in
+# turn does not combine with the proprietary CUDA/NVENC and DeckLink pieces.
+set(KLOUD_FFMPEG_PREFIX "" CACHE PATH
+    "Prefix of an LGPL FFmpeg build; empty uses the system FFmpeg")
+if(KLOUD_FFMPEG_PREFIX)
+  get_filename_component(KLOUD_FFMPEG_PREFIX "${KLOUD_FFMPEG_PREFIX}" ABSOLUTE
+                         BASE_DIR ${CMAKE_SOURCE_DIR})
+  if(NOT EXISTS ${KLOUD_FFMPEG_PREFIX}/lib/pkgconfig/libavcodec.pc)
+    message(FATAL_ERROR
+      "KLOUD_FFMPEG_PREFIX=${KLOUD_FFMPEG_PREFIX} has no lib/pkgconfig/libavcodec.pc. "
+      "Build one with packaging/build-ffmpeg-lgpl.sh.")
+  endif()
+  # Search this prefix only, so a system FFmpeg cannot satisfy the check.
+  set(ENV{PKG_CONFIG_LIBDIR} ${KLOUD_FFMPEG_PREFIX}/lib/pkgconfig)
+  set(KLOUD_FFMPEG_LIBDIR ${KLOUD_FFMPEG_PREFIX}/lib)
+endif()
+
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
   libavcodec libavformat libavutil libavfilter libswresample libswscale)
 
 pkg_check_modules(FFNVCODEC REQUIRED IMPORTED_TARGET ffnvcodec)
+
+if(KLOUD_FFMPEG_PREFIX)
+  unset(ENV{PKG_CONFIG_LIBDIR})
+  message(STATUS "FFmpeg: LGPL build at ${KLOUD_FFMPEG_PREFIX} "
+                 "(libavcodec ${FFMPEG_libavcodec_VERSION})")
+else()
+  message(WARNING
+    "FFmpeg: using the system build (libavcodec ${FFMPEG_libavcodec_VERSION}). "
+    "Distro FFmpeg is configured --enable-gpl, so binaries linking it must be "
+    "conveyed under the GPL and cannot be distributed under this project's "
+    "MPL-2.0 terms alongside the proprietary CUDA/DeckLink runtimes. Fine for "
+    "local development; run packaging/build-ffmpeg-lgpl.sh and set "
+    "-DKLOUD_FFMPEG_PREFIX for anything you ship.")
+endif()
 
 add_library(kloud_media STATIC
   src/media/CudaCtx.cpp
@@ -97,7 +141,13 @@ if(EXISTS ${OMT_SDK_DIR}/include/libomt.h AND EXISTS ${OMT_SDK_DIR}/lib/libomt.s
   add_library(OMT::omt SHARED IMPORTED)
   set_target_properties(OMT::omt PROPERTIES
     IMPORTED_LOCATION ${OMT_SDK_DIR}/lib/libomt.so
-    INTERFACE_INCLUDE_DIRECTORIES ${OMT_SDK_DIR}/include)
+    INTERFACE_INCLUDE_DIRECTORIES ${OMT_SDK_DIR}/include
+    # libomt.so carries no SONAME. Without this, CMake links it by absolute
+    # path and that build-tree path lands in DT_NEEDED, so an installed or
+    # relocated binary looks for the library where it was compiled. Setting
+    # this makes the link go through -L/-l, leaving DT_NEEDED as "libomt.so"
+    # for the RPATH to resolve.
+    IMPORTED_NO_SONAME TRUE)
   set(_omt_libdir ${OMT_SDK_DIR}/lib)
   message(STATUS "OMT SDK found: ${OMT_SDK_DIR}")
 else()
@@ -151,7 +201,21 @@ endif()
 
 set(_kloud_rpath "")
 if(OMT_FOUND)
-  set(_kloud_rpath "${_omt_libdir}")
+  list(APPEND _kloud_rpath "${_omt_libdir}")
+endif()
+if(KLOUD_FFMPEG_LIBDIR)
+  list(APPEND _kloud_rpath "${KLOUD_FFMPEG_LIBDIR}")
+endif()
+
+# Everything not resolvable from the system lands in one private libdir:
+# libomt.so (a NativeAOT build that dlopens libvmx.so from its own directory)
+# and, when one is used, the LGPL FFmpeg. Installed binaries carry an RPATH to
+# it, so a private FFmpeg cannot be shadowed by the distro's.
+include(GNUInstallDirs)
+set(KLOUD_PRIVATE_LIBDIR ${CMAKE_INSTALL_FULL_LIBDIR}/8kloud-switcher)
+set(_kloud_install_rpath "")
+if(OMT_FOUND OR KLOUD_FFMPEG_LIBDIR)
+  set(_kloud_install_rpath "${KLOUD_PRIVATE_LIBDIR}")
 endif()
 
 # The bench rig talks OMT end to end, so it only exists with the SDK.
@@ -164,7 +228,7 @@ if(OMT_FOUND)
     # Locate libomt.so next to the SDK without requiring ldconfig.
     set_target_properties(${tool} PROPERTIES
       BUILD_RPATH "${_omt_libdir}"
-      INSTALL_RPATH "${_omt_libdir}")
+      INSTALL_RPATH "${_kloud_install_rpath}")
   endforeach()
 else()
   message(WARNING "OMT SDK not found - kloud-testgen/kloud-latmeter will not "
@@ -175,7 +239,7 @@ add_executable(kloud-headless tools/kloud-headless/main.cpp)
 target_link_libraries(kloud-headless PRIVATE kloud_engine)
 target_include_directories(kloud-headless PRIVATE tools)
 set_target_properties(kloud-headless PROPERTIES
-  BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_rpath}")
+  BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_install_rpath}")
 
 find_package(Qt6 COMPONENTS Widgets QUIET)
 if(Qt6_FOUND)
@@ -197,7 +261,7 @@ if(Qt6_FOUND)
     AUTOMOC ON
     AUTORCC ON
     BUILD_RPATH "${_kloud_rpath}"
-    INSTALL_RPATH "${_kloud_rpath}")
+    INSTALL_RPATH "${_kloud_install_rpath}")
   target_link_libraries(8kloud-switcher PRIVATE kloud_engine Qt6::Widgets)
   target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
 else()
@@ -206,12 +270,21 @@ endif()
 
 option(KLOUD_BUILD_TESTS "Build unit tests" ON)
 if(KLOUD_BUILD_TESTS)
-  include(FetchContent)
-  FetchContent_Declare(Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG v3.8.0
-  )
-  FetchContent_MakeAvailable(Catch2)
+  # Prefer a distro Catch2 (Debian/Ubuntu: catch2 >= 3). Only fall back to
+  # fetching upstream when none is installed -- a package build has no network.
+  find_package(Catch2 3 QUIET)
+  if(Catch2_FOUND)
+    message(STATUS "Catch2: system ${Catch2_VERSION}")
+  else()
+    message(STATUS "Catch2: not installed, fetching v3.8.0")
+    include(FetchContent)
+    FetchContent_Declare(Catch2
+      GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+      GIT_TAG v3.8.0
+    )
+    FetchContent_MakeAvailable(Catch2)
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+  endif()
 
   enable_testing()
   add_executable(kloud_tests
@@ -232,7 +305,6 @@ if(KLOUD_BUILD_TESTS)
   target_link_libraries(kloud_tests PRIVATE kloud_core kloud_gpu kloud_media Catch2::Catch2WithMain)
   target_include_directories(kloud_tests PRIVATE tools)
 
-  list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
   include(Catch)
   catch_discover_tests(kloud_tests)
 
@@ -263,3 +335,43 @@ if(KLOUD_BUILD_TESTS)
       PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   endif()
 endif()
+
+# ---------------------------------------------------------------------------
+# Install rules (used by the Debian package; see debian/)
+# ---------------------------------------------------------------------------
+install(TARGETS kloud-headless RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(TARGET 8kloud-switcher)
+  install(TARGETS 8kloud-switcher RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES ${CMAKE_SOURCE_DIR}/src/ui/assets/cow-switcher-logo.svg
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+          RENAME 8kloud-switcher.svg)
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/8kloud-switcher.desktop
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+endif()
+if(OMT_FOUND)
+  foreach(tool kloud-testgen kloud-latmeter)
+    install(TARGETS ${tool} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endforeach()
+  # libomt.so dlopens libvmx.so from its own directory: keep them together in
+  # a private libdir that the installed binaries carry on their RPATH.
+  install(FILES ${OMT_SDK_DIR}/lib/libomt.so ${OMT_SDK_DIR}/lib/libvmx.so
+          DESTINATION ${KLOUD_PRIVATE_LIBDIR})
+endif()
+
+if(KLOUD_FFMPEG_LIBDIR)
+  # Ship the LGPL FFmpeg privately rather than depending on the distro's
+  # GPL-configured one. Globbing at install time follows the real files and
+  # their SONAME symlinks (libavcodec.so.62 -> libavcodec.so.62.11.103); the
+  # bare .so development symlinks are left behind.
+  file(GLOB _kloud_ffmpeg_libs "${KLOUD_FFMPEG_LIBDIR}/lib*.so.*")
+  if(NOT _kloud_ffmpeg_libs)
+    message(FATAL_ERROR "No shared libraries in ${KLOUD_FFMPEG_LIBDIR}")
+  endif()
+  install(FILES ${_kloud_ffmpeg_libs} DESTINATION ${KLOUD_PRIVATE_LIBDIR})
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/build-ffmpeg-lgpl.sh
+          DESTINATION ${CMAKE_INSTALL_DOCDIR}
+          PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                      GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+endif()
+install(FILES ${CMAKE_SOURCE_DIR}/scripts/tuning-sysctl.conf
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)

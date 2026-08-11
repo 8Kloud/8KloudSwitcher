@@ -1,0 +1,56 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: 8Kloud Switcher
+Source: https://github.com/moocowsheep/8KloudSwitcher
+Comment:
+ The package also ships, in the private directory
+ /usr/lib/*/8kloud-switcher, an LGPL-2.1+ build of FFmpeg produced by
+ packaging/build-ffmpeg-lgpl.sh, and the MIT-licensed OMT runtime
+ (libomt.so, libvmx.so). The FFmpeg build is deliberately NOT the
+ distribution's: Debian and Ubuntu configure FFmpeg with --enable-gpl, which
+ makes it GPL-2.0-or-later, and a binary linking that could not be conveyed
+ under this package's MPL-2.0 terms alongside the proprietary NVIDIA CUDA /
+ NVENC runtime and the Blackmagic DeckLink SDK.
+
+Files: *
+Copyright: 2026 Devin Block
+License: MPL-2.0
+
+Files: third_party/omt/*
+Copyright: 2025 Open Media Transport Contributors
+License: Expat
+
+Files: third_party/decklink/*
+Copyright: Blackmagic Design Pty Ltd
+License: Blackmagic-DeckLink-SDK
+ The Blackmagic DeckLink SDK headers are redistributed under the terms of the
+ Blackmagic Design DeckLink SDK license, which permits use and redistribution
+ for developing applications that work with Blackmagic Design hardware. The
+ SDK provides no link-time library: DeckLinkAPIDispatch.cpp dlopens
+ libDeckLinkAPI.so from the separately installed Desktop Video driver.
+
+License: MPL-2.0
+ This Source Code Form is subject to the terms of the Mozilla Public License,
+ v. 2.0. If a copy of the MPL was not distributed with this file, You can
+ obtain one at https://mozilla.org/MPL/2.0/.
+ .
+ On Debian systems the complete text of the Mozilla Public License 2.0 can be
+ found in /usr/share/common-licenses/MPL-2.0.
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.

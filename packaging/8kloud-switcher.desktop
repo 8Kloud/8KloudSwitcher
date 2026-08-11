@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=8Kloud Switcher
+GenericName=Live Video Switcher
+Comment=Live video switcher for Linux + NVIDIA: OMT, SDI and SRT up to 8K
+Exec=8kloud-switcher
+Icon=8kloud-switcher
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=video;switcher;live;production;SDI;SRT;OMT;NDI;broadcast;
+StartupNotify=true

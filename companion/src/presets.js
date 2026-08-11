@@ -1,3 +1,10 @@
+// 8Kloud Switcher Companion module.
+// Copyright (c) 2026 Devin Block
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // Drag-and-drop presets: program/preview rows with tally feedback, and a
 // transport strip. Button text uses module variables so live input names
 // appear once connected.

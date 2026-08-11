@@ -1,0 +1,6 @@
+8kloud-switcher (1.0.0) resolute; urgency=medium
+
+  * First Debian package. Targets Ubuntu Server 26.04 with the NVIDIA driver,
+    CUDA toolkit headers, FFmpeg 8.x and Qt 6.
+
+ -- Devin Block <devin@devinblock.com>  Mon, 10 Aug 2026 21:00:00 +0000

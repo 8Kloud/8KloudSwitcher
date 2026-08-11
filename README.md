@@ -137,11 +137,29 @@ where P4 loses 25–40% of the SRT feed. Design and measurements:
 
 ## Build
 
-Requires: gcc 14+/clang, CMake 3.25+, Ninja, and FFmpeg development libraries
-(`libavcodec`, `libavformat`, `libavutil`, `libavfilter`, `libswresample`, and
-`libswscale`). OMT and DeckLink are optional but expected: without the OMT SDK
-there is no OMT input or program output and the bench tools are not built;
-without the DeckLink SDK there is no SDI input.
+Requires: gcc 14+/clang, CMake 3.25+, Ninja, `glslc`, the Vulkan loader, Qt 6
+Widgets, and FFmpeg development libraries (`libavcodec`, `libavformat`,
+`libavutil`, `libavfilter`, `libswresample`, `libswscale`) plus the FFmpeg NVIDIA
+codec headers (`ffnvcodec`). OMT and DeckLink are optional but expected: without
+the OMT SDK there is no OMT input or program output and the bench tools are not
+built; without the DeckLink SDK there is no SDI input.
+
+On Ubuntu 26.04 (the target platform):
+
+```sh
+sudo apt install build-essential cmake ninja-build pkgconf glslc \
+    libvulkan-dev qt6-base-dev catch2 avahi-daemon \
+    libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev \
+    libswresample-dev libswscale-dev libffmpeg-nvenc-dev
+```
+
+The CUDA driver API headers (`cuda.h`) are needed too, but Ubuntu 26.04 only
+packages `nvidia-cuda-dev` at 12.4 — far behind the 610-series driver — so
+install the CUDA toolkit from NVIDIA's runfile into `/usr/local/cuda`. CMake
+accepts `/usr/local/cuda`, `/opt/cuda` or `/usr/include`.
+
+Catch2 comes from the distro when installed; otherwise the build fetches
+v3.8.0 from GitHub, which a package build cannot do.
 
 ```sh
 # OMT: build libomt/libvmx once into third_party/omt (see docs/omt.md).
@@ -151,6 +169,23 @@ cmake -B build -G Ninja
 cmake --build build
 ctest --test-dir build          # unit tests
 ```
+
+## Debian package
+
+`debian/` builds a single `8kloud-switcher` package with the GUI, the headless
+engine, both bench tools, and the OMT runtime in a private libdir
+(`/usr/lib/*/8kloud-switcher`, reached through each binary's RPATH). Build it
+with the dependencies above in place:
+
+```sh
+dpkg-buildpackage -b -us -uc      # -> ../8kloud-switcher_1.0.0_amd64.deb
+sudo apt install ../8kloud-switcher_1.0.0_amd64.deb
+```
+
+The NVIDIA driver and NVENC runtime come in as package dependencies; the
+DeckLink Desktop Video driver is a `Suggests` because SDI is optional. Link-time
+optimization is disabled in `debian/rules` — GCC 15's LTO drops inline
+`std::string` symbols across this project's static archives.
 
 OMT discovery needs `avahi-daemon` running.
 
@@ -201,9 +236,36 @@ Companion module with tally feedbacks and presets lives in `companion/`.
 
 Copyright © 2026 Devin Block.
 
-8Kloud Switcher is licensed under the **GNU General Public License v3.0 or later**
-(GPL-3.0-or-later) — see [`LICENSE.md`](LICENSE.md). As an additional permission
-under GPLv3 section 7, 8Kloud Switcher may be linked against and distributed with the
-**NVIDIA CUDA / Video Codec SDK** runtime (CUDA, NVENC, NVDEC), the **OMT**
-(libomt / libvmx) runtime, and the **Blackmagic DeckLink SDK**; the full exception
-text is in [`EXCEPTIONS.md`](EXCEPTIONS.md).
+8Kloud Switcher is licensed under the **Mozilla Public License 2.0**
+(MPL-2.0) — see [`LICENSE.md`](LICENSE.md). MPL-2.0 is file-level copyleft:
+changes to these source files stay under the MPL, while the work as a whole may
+be combined into a Larger Work under other terms, including proprietary ones
+(MPL §3.3). No linking exception is needed, so the old `EXCEPTIONS.md` is gone.
+
+That covers the Bitfocus Companion module in `companion/` too. It carries its own
+copy of the license ([`companion/LICENSE`](companion/LICENSE)) because it is also
+distributed standalone through Bitfocus's module registry, where MPL §3.1 requires
+the license text to travel with the source.
+
+That only holds if the binary's other pieces permit it, which is why the FFmpeg
+build matters:
+
+| Component | License | Note |
+| --- | --- | --- |
+| FFmpeg (via `packaging/build-ffmpeg-lgpl.sh`) | LGPL-2.1+ | **Do not link a distro FFmpeg** — see below |
+| Qt 6 Widgets/Gui/Core | LGPL-3.0 | dynamic linking only |
+| libsrt | MPL-2.0 | |
+| OMT — libomt, libvmx | MIT | |
+| Vulkan loader | Apache-2.0 | |
+| NVIDIA CUDA / NVENC / NVDEC runtime | proprietary | permitted under MPL §3.3 |
+| Blackmagic DeckLink SDK | proprietary | dlopened at runtime |
+| Catch2 | BSL-1.0 | tests only, not shipped |
+
+**Ubuntu's FFmpeg is built `--enable-gpl`, so it is GPL-2.0-or-later as
+shipped.** Linking it would force the whole binary to be conveyed under the GPL,
+which defeats the MPL and cannot combine with the proprietary CUDA and DeckLink
+pieces. Build the LGPL FFmpeg described under [Build](#build) and configure
+against it with `-DKLOUD_FFMPEG_PREFIX=...`; the Debian package does this and
+ships those libraries privately. A plain `cmake -B build` without the flag falls
+back to the system FFmpeg and prints a loud warning — fine for development, not
+for anything you distribute.

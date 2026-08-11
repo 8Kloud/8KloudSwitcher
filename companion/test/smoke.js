@@ -1,3 +1,10 @@
+// 8Kloud Switcher Companion module.
+// Copyright (c) 2026 Devin Block
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // Integration smoke test: loads the real module sources with a stubbed
 // Companion host (InstanceBase/runEntrypoint replaced; TCPHelper is the real
 // one) and drives a live switcher. Run a switcher first, then:

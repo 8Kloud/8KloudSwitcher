@@ -6,3 +6,10 @@ compile_commands.json
 *.o
 *.a
 scratch-logs/
+obj-*/
+debian/8kloud-switcher/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/*.debhelper.log
+debian/debhelper-build-stamp
