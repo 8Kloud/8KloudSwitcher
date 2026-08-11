@@ -1,6 +1,10 @@
-8kloud-switcher (1.0.0) resolute; urgency=medium
+8kloud-switcher (0.6.5) resolute; urgency=medium
 
   * First Debian package. Targets Ubuntu Server 26.04 with the NVIDIA driver,
-    CUDA toolkit headers, FFmpeg 8.x and Qt 6.
+    CUDA toolkit headers and Qt 6.
+  * Links and ships an LGPL-2.1+ FFmpeg built by
+    packaging/build-ffmpeg-lgpl.sh rather than the distribution's
+    GPL-configured one, alongside the OMT runtime, in a private libdir.
+  * Relicensed to MPL-2.0.
 
- -- Devin Block <devin@devinblock.com>  Mon, 10 Aug 2026 21:00:00 +0000
+ -- Devin Block <devin@devinblock.com>  Mon, 10 Aug 2026 23:30:00 +0000
