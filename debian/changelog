@@ -1,3 +1,12 @@
+8kloud-switcher (0.6.6) resolute; urgency=medium
+
+  * Warn loudly at configure time when the OMT or DeckLink SDK is absent,
+    instead of silently building without OMT or SDI support.
+  * Document that third_party/ is gitignored and both SDKs must be vendored
+    before building or packaging.
+
+ -- Devin Block <devin@devinblock.com>  Mon, 10 Aug 2026 23:55:00 +0000
+
 8kloud-switcher (0.6.5) resolute; urgency=medium
 
   * First Debian package. Targets Ubuntu Server 26.04 with the NVIDIA driver,
