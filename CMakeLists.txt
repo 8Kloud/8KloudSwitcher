@@ -152,7 +152,10 @@ if(EXISTS ${OMT_SDK_DIR}/include/libomt.h AND EXISTS ${OMT_SDK_DIR}/lib/libomt.s
   message(STATUS "OMT SDK found: ${OMT_SDK_DIR}")
 else()
   set(OMT_FOUND FALSE)
-  message(STATUS "OMT SDK not found (${OMT_SDK_DIR}) - OMT input disabled.")
+  message(WARNING
+    "OMT SDK not found at ${OMT_SDK_DIR} - building WITHOUT OMT input, the "
+    "OMT program/clean/multiview senders, and the bench tools. third_party/ is "
+    "gitignored, so a fresh clone never has it: see docs/omt.md.")
 endif()
 
 # -- DeckLink: optional, headers vendored in third_party/decklink/include
@@ -167,7 +170,10 @@ if(EXISTS ${DECKLINK_SDK_DIR}/include/DeckLinkAPI.h AND
   message(STATUS "DeckLink SDK found: ${DECKLINK_SDK_DIR}")
 else()
   set(DECKLINK_FOUND FALSE)
-  message(STATUS "DeckLink SDK not found (${DECKLINK_SDK_DIR}) - DeckLink input disabled.")
+  message(WARNING
+    "DeckLink SDK not found at ${DECKLINK_SDK_DIR} - building WITHOUT any SDI "
+    "support (DeckLink input and SDI program/clean output). third_party/ is "
+    "gitignored, so a fresh clone never has it: see docs/decklink.md.")
 endif()
 
 add_library(kloud_engine STATIC

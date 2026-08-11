@@ -140,9 +140,21 @@ where P4 loses 25–40% of the SRT feed. Design and measurements:
 Requires: gcc 14+/clang, CMake 3.25+, Ninja, `glslc`, the Vulkan loader, Qt 6
 Widgets, and FFmpeg development libraries (`libavcodec`, `libavformat`,
 `libavutil`, `libavfilter`, `libswresample`, `libswscale`) plus the FFmpeg NVIDIA
-codec headers (`ffnvcodec`). OMT and DeckLink are optional but expected: without
-the OMT SDK there is no OMT input or program output and the bench tools are not
-built; without the DeckLink SDK there is no SDI input.
+codec headers (`ffnvcodec`).
+
+**The OMT and DeckLink SDKs are not in this repository** — `third_party/` is
+gitignored, so a fresh clone does not have them and you must fetch them
+yourself (step 1 below). They are technically optional, but the build only
+prints a `STATUS` line when they are missing and then quietly produces a
+crippled binary:
+
+| Missing | What you lose |
+| --- | --- |
+| `third_party/omt` | OMT input, the OMT program/clean/multiview senders, and both bench tools (`kloud-testgen`, `kloud-latmeter`) |
+| `third_party/decklink` | All SDI — DeckLink input and SDI program/clean output |
+
+Check the configure output for `OMT SDK found` and `DeckLink SDK found` before
+you trust a build, and always before you package one.
 
 On Ubuntu 26.04 (the target platform):
 
@@ -161,10 +173,22 @@ accepts `/usr/local/cuda`, `/opt/cuda` or `/usr/include`.
 Catch2 comes from the distro when installed; otherwise the build fetches
 v3.8.0 from GitHub, which a package build cannot do.
 
-```sh
-# OMT: build libomt/libvmx once into third_party/omt (see docs/omt.md).
-# DeckLink: copy the SDK headers into third_party/decklink (see docs/decklink.md).
+**1. Vendor the SDKs into `third_party/`** (once per machine — they are
+gitignored and never committed):
 
+- **OMT** — build `libvmx` and `libomt` from source and lay them out as
+  `third_party/omt/{include,lib}`. Full steps in [`docs/omt.md`](docs/omt.md);
+  needs clang and the .NET 8 SDK.
+- **DeckLink** — download the Blackmagic *Desktop Video SDK* from
+  [blackmagicdesign.com/support](https://www.blackmagicdesign.com/support)
+  (free, but registration-walled, so it cannot be scripted) and copy its Linux
+  headers plus `DeckLinkAPIDispatch.cpp` into `third_party/decklink/include/`.
+  See [`docs/decklink.md`](docs/decklink.md). Only the headers are needed to
+  build; the Desktop Video *driver* is needed to run.
+
+**2. Build:**
+
+```sh
 cmake -B build -G Ninja
 cmake --build build
 ctest --test-dir build          # unit tests
@@ -173,13 +197,22 @@ ctest --test-dir build          # unit tests
 ## Debian package
 
 `debian/` builds a single `8kloud-switcher` package with the GUI, the headless
-engine, both bench tools, and the OMT runtime in a private libdir
-(`/usr/lib/*/8kloud-switcher`, reached through each binary's RPATH). Build it
-with the dependencies above in place:
+engine, both bench tools, and the LGPL FFmpeg and OMT runtime in a private
+libdir (`/usr/lib/*/8kloud-switcher`, reached through each binary's RPATH).
+
+**Do both prerequisite steps first** — neither is checked by `dpkg-buildpackage`
+beyond the FFmpeg one, and a package built without the SDKs installs cleanly
+while silently lacking OMT and SDI entirely:
+
+1. Vendor `third_party/omt` and `third_party/decklink` as described under
+   [Build](#build).
+2. Run `packaging/build-ffmpeg-lgpl.sh`. `debian/rules` refuses to configure
+   without it, since a distro FFmpeg cannot be linked into a redistributable
+   build (see [License](#license)).
 
 ```sh
-dpkg-buildpackage -b -us -uc      # -> ../8kloud-switcher_1.0.0_amd64.deb
-sudo apt install ../8kloud-switcher_1.0.0_amd64.deb
+dpkg-buildpackage -b -us -uc      # -> ../8kloud-switcher_0.6.5_amd64.deb
+sudo apt install ../8kloud-switcher_0.6.5_amd64.deb
 ```
 
 The NVIDIA driver and NVENC runtime come in as package dependencies; the

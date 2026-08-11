@@ -22,9 +22,14 @@ unusable, and this one cannot.
 
 ## Building
 
-Headers are vendored (gitignored, like the OMT SDK):
+Headers are vendored (gitignored, like the OMT SDK). Download the *Desktop
+Video SDK* from <https://www.blackmagicdesign.com/support> — search for
+"Desktop Video SDK", pick the Linux package. It is free but behind a
+registration form, so this step cannot be scripted. Unpack it and point `$SDK`
+at the resulting directory:
 
 ```sh
+SDK=/path/to/Blackmagic_DeckLink_SDK_<version>
 mkdir -p third_party/decklink/include
 cp "$SDK/Linux/include"/*.h "$SDK/Linux/include/DeckLinkAPIDispatch.cpp" \
    third_party/decklink/include/
