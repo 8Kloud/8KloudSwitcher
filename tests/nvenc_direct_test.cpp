@@ -4,7 +4,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-// The direct NVENC backend: registered-in-place NV12 in, decodable HEVC out.
+// The direct NVENC backend: registered-in-place NV12 in, decodable HEVC/AV1 out.
 // Skips without a GPU/CUDA/NVENC.
 #include <catch2/catch_test_macros.hpp>
 
@@ -30,6 +30,9 @@ const VideoFormatDesc kShow{kW, kH, 60000, 1001, PixFmt::NV12};
 // Preset pinned so the test measures the encoder, not the Auto policy.
 const media::EncoderConfig kDirectCfg{media::EncoderBackend::Direct,
                                       media::EncoderPreset::P4, 4000, false};
+const media::EncoderConfig kDirectAv1Cfg{
+    media::EncoderBackend::Direct, media::EncoderPreset::P4, 4000, false,
+    media::VideoCodec::Av1};
 
 // Tight-pitch NV12 with a block that moves frame to frame, so the encoder has
 // real motion to code rather than a run of skip frames.
@@ -46,8 +49,9 @@ std::vector<uint8_t> nv12Frame(int n) {
 
 // Decodes an elementary stream and returns the frame count, or -1 on failure.
 int decodeFrames(const std::vector<AVPacket*>& packets,
-                 const AVCodecParameters* par, int& outW, int& outH) {
-    const AVCodec* dec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
+                 const AVCodecParameters* par, int& outW, int& outH,
+                 AVCodecID codecId = AV_CODEC_ID_HEVC) {
+    const AVCodec* dec = avcodec_find_decoder(codecId);
     if (!dec) return -1;
     AVCodecContext* ctx = avcodec_alloc_context3(dec);
     if (!ctx) return -1;
@@ -195,6 +199,41 @@ TEST_CASE("NvencDirect exports codec parameters for a global-header muxer") {
 
     int w = 0, h = 0;
     REQUIRE(decodeFrames(packets, par, w, h) == kFrames);
+    CHECK(w == kW);
+    CHECK(h == kH);
+    freeAll(packets);
+    avcodec_parameters_free(&par);
+}
+
+TEST_CASE("NvencDirect encodes decodable AV1 with sequence-header extradata") {
+    auto fx = makeFixture();
+    if (!fx) SKIP("no Vulkan/CUDA device");
+
+    media::NvencDirect enc;
+    if (!enc.open(fx->cuda, kShow, kDirectAv1Cfg))
+        SKIP("GPU does not support direct AV1 NVENC");
+
+    AVCodecParameters* par = avcodec_parameters_alloc();
+    REQUIRE(enc.fillCodecpar(par));
+    CHECK(par->codec_id == AV_CODEC_ID_AV1);
+    CHECK(par->profile == AV_PROFILE_AV1_MAIN);
+    CHECK(par->width == kW);
+    CHECK(par->height == kH);
+    REQUIRE(par->extradata_size > 0);
+
+    std::vector<AVPacket*> packets;
+    for (int n = 0; n < kFrames; ++n) {
+        fx->upload(n);
+        REQUIRE(enc.encode(fx->buf, n, packets));
+        REQUIRE(int(packets.size()) == n + 1);
+        CHECK(packets.back()->pts == n);
+        CHECK(packets.back()->dts == n);
+    }
+    REQUIRE(enc.drain(packets));
+    REQUIRE((packets.front()->flags & AV_PKT_FLAG_KEY) != 0);
+
+    int w = 0, h = 0;
+    REQUIRE(decodeFrames(packets, par, w, h, AV_CODEC_ID_AV1) == kFrames);
     CHECK(w == kW);
     CHECK(h == kH);
     freeAll(packets);

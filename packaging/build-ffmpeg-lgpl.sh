@@ -73,6 +73,18 @@ fi
 cd "$work/ffmpeg"
 make distclean >/dev/null 2>&1 || true
 
+# FFmpeg does not yet ship AV1 carriage for MPEG-TS. Keep the local source
+# idempotently patched so rerunning this build script is safe.
+av1_ts_patch=$root/packaging/patches/ffmpeg/0001-av1-mpegts-draft.patch
+if git apply --reverse --check "$av1_ts_patch" >/dev/null 2>&1; then
+  : # already applied
+elif git apply --check "$av1_ts_patch"; then
+  git apply "$av1_ts_patch"
+else
+  echo "ERROR: AV1 MPEG-TS patch does not apply to FFmpeg $ffmpeg_tag" >&2
+  exit 1
+fi
+
 # The switcher links libavcodec, libavformat, libavutil, libavfilter,
 # libswresample and libswscale. avdevice is the one library it never touches.
 #

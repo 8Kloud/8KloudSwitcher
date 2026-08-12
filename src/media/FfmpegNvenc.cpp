@@ -52,9 +52,11 @@ bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
         return false;
     }
 
-    const AVCodec* codec = avcodec_find_encoder_by_name("hevc_nvenc");
+    const char* codecName = cfg.codec == VideoCodec::Av1 ? "av1_nvenc"
+                                                         : "hevc_nvenc";
+    const AVCodec* codec = avcodec_find_encoder_by_name(codecName);
     if (!codec) {
-        KLOUD_LOGE("nvenc: hevc_nvenc not available in this FFmpeg");
+        KLOUD_LOGE("nvenc: %s not available in this FFmpeg", codecName);
         return false;
     }
     enc_ = avcodec_alloc_context3(codec);
@@ -63,7 +65,12 @@ bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
     enc_->time_base = {int(show.fpsD), int(show.fpsN)};
     enc_->framerate = {int(show.fpsN), int(show.fpsD)};
     enc_->pix_fmt = AV_PIX_FMT_CUDA;
-    if (cfg.globalHeader) enc_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    // The draft MPEG-TS PMT descriptor is derived from AV1 sequence-header
+    // extradata. FFmpeg's NVENC wrapper only fetches that extradata when the
+    // global-header flag is set; AV1 still repeats its sequence header on
+    // keyframes, so this does not remove the in-band headers needed by TS.
+    if (cfg.globalHeader || cfg.codec == VideoCodec::Av1)
+        enc_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     enc_->hw_frames_ctx = av_buffer_ref(hwFrames_);
     enc_->max_b_frames = 0;
     enc_->gop_size = std::max(1, int(fps * 2));  // IDR every ~2s
@@ -84,8 +91,8 @@ bool FfmpegNvenc::open(CudaCtx& cuda, const VideoFormatDesc& show,
         return false;
     }
     frame_ = av_frame_alloc();
-    KLOUD_LOGI("nvenc: hevc %dx%d @ %.3f fps, %d kbps CBR (%s/ull)", w_, h_, fps,
-             bitrateKbps, preset);
+    KLOUD_LOGI("nvenc: %s %dx%d @ %.3f fps, %d kbps CBR (%s/ull)",
+             videoCodecName(cfg.codec), w_, h_, fps, bitrateKbps, preset);
     return true;
 }
 

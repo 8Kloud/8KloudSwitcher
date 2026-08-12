@@ -36,7 +36,7 @@ Suggests: desktopvideo
 Description: Live video switcher for Linux and NVIDIA, up to 8K 59.94p
  8Kloud Switcher takes OMT, SDI (Blackmagic DeckLink) and SRT sources, mixes
  them on the GPU through Vulkan compute, and sends program out over OMT, SDI
- and SRT (HEVC via NVENC) while recording HEVC/AAC Matroska locally.
+ and SRT (HEVC or AV1 via NVENC) while recording HEVC/AAC Matroska locally.
  .
  It carries a full audio mixer with per-input frame sync, two alpha downstream
  keyers, paced local clip playlists, still-image inputs, a clean feed without

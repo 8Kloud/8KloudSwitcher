@@ -103,6 +103,12 @@ int main(int argc, char** argv) {
             cfg.srtUrl = args[++i].toStdString();
         else if (args[i] == QStringLiteral("--srt-bitrate") && i + 1 < args.size())
             cfg.srtBitrateKbps = args[++i].toInt();
+        else if (args[i] == QStringLiteral("--srt-codec") && i + 1 < args.size()) {
+            const QString name = args[++i];
+            if (!kloud::media::parseVideoCodec(name.toStdString(), cfg.srtCodec))
+                qWarning("unknown --srt-codec '%s'; using hevc",
+                         qUtf8Printable(name));
+        }
         else if (args[i] == QStringLiteral("--encoder-preset") &&
                  i + 1 < args.size()) {
             const QString name = args[++i];

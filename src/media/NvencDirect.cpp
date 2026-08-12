@@ -72,6 +72,9 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     close();
     int bitrateKbps = cfg.bitrateKbps;
     const bool globalHeader = cfg.globalHeader;
+    const bool av1Codec = cfg.codec == VideoCodec::Av1;
+    const GUID codecGuid = av1Codec ? NV_ENC_CODEC_AV1_GUID
+                                    : NV_ENC_CODEC_HEVC_GUID;
     const EncoderPreset preset = resolveEncoderPreset(cfg.preset, show);
     const GUID presetGuid = nvencPresetGuid(preset);
     const NvencLib& lib = nvencLib();
@@ -82,6 +85,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     }
 
     cuda_ = &cuda;
+    codec_ = cfg.codec;
     w_ = show.width;
     h_ = show.height;
     // NVENC takes the pack buffer as-is: tight pitch, chroma implicitly at
@@ -134,7 +138,7 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     presetCfg.version = NV_ENC_PRESET_CONFIG_VER;
     presetCfg.presetCfg.version = NV_ENC_CONFIG_VER;
     if (const NVENCSTATUS s = api_.nvEncGetEncodePresetConfigEx(
-            enc_, NV_ENC_CODEC_HEVC_GUID, presetGuid,
+            enc_, codecGuid, presetGuid,
             NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY, &presetCfg);
         s != NV_ENC_SUCCESS) {
         logLast("preset config", s);
@@ -146,7 +150,8 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     // single-frame VBV, IPP, IDR ~2 s) so the two paths are swappable mid-show.
     cfg_ = presetCfg.presetCfg;
     cfg_.version = NV_ENC_CONFIG_VER;
-    cfg_.profileGUID = NV_ENC_HEVC_PROFILE_MAIN_GUID;
+    cfg_.profileGUID = av1Codec ? NV_ENC_AV1_PROFILE_MAIN_GUID
+                                : NV_ENC_HEVC_PROFILE_MAIN_GUID;
     cfg_.gopLength = uint32_t(std::max(1, int(fps * 2)));
     cfg_.frameIntervalP = 1;
     cfg_.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
@@ -157,27 +162,46 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
     cfg_.rcParams.enableLookahead = 0;
     cfg_.rcParams.zeroReorderDelay = 1;
 
-    NV_ENC_CONFIG_HEVC& hevc = cfg_.encodeCodecConfig.hevcConfig;
-    hevc.idrPeriod = cfg_.gopLength;
-    hevc.chromaFormatIDC = 1;
-    // 8-bit in, 8-bit out. NVENC API 12.2 replaced the packed
-    // inputPixelBitDepthMinus8/pixelBitDepthMinus8 bitfields with the
-    // NV_ENC_BIT_DEPTH enum; Ubuntu 26.04 ships headers at 12.1.
+    // 8-bit in, 8-bit out. NVENC API 12.2 replaced the packed bit-depth
+    // fields with NV_ENC_BIT_DEPTH enums; Ubuntu 26.04 ships headers at 12.1.
+    if (av1Codec) {
+        NV_ENC_CONFIG_AV1& av1 = cfg_.encodeCodecConfig.av1Config;
+        av1.idrPeriod = cfg_.gopLength;
+        av1.chromaFormatIDC = 1;
+        // MPEG-TS re-wraps low-overhead OBUs itself. Keep sequence headers in
+        // band at keyframes and also export one as codec extradata for the PMT
+        // AV1 video descriptor.
+        av1.outputAnnexBFormat = 0;
+        av1.disableSeqHdr = 0;
+        av1.repeatSeqHdr = 1;
 #if NVENCAPI_MAJOR_VERSION > 12 || \
     (NVENCAPI_MAJOR_VERSION == 12 && NVENCAPI_MINOR_VERSION >= 2)
-    hevc.inputBitDepth = NV_ENC_BIT_DEPTH_8;
-    hevc.outputBitDepth = NV_ENC_BIT_DEPTH_8;
+        av1.inputBitDepth = NV_ENC_BIT_DEPTH_8;
+        av1.outputBitDepth = NV_ENC_BIT_DEPTH_8;
 #else
-    hevc.pixelBitDepthMinus8 = 0;
+        av1.inputPixelBitDepthMinus8 = 0;
+        av1.pixelBitDepthMinus8 = 0;
 #endif
-    // MPEG-TS wants parameter sets in band on every IDR; Matroska takes them
-    // once as extradata, which is what globalHeader asks for.
-    hevc.repeatSPSPPS = globalHeader ? 0u : 1u;
-    hevc.disableSPSPPS = globalHeader ? 1u : 0u;
+    } else {
+        NV_ENC_CONFIG_HEVC& hevc = cfg_.encodeCodecConfig.hevcConfig;
+        hevc.idrPeriod = cfg_.gopLength;
+        hevc.chromaFormatIDC = 1;
+#if NVENCAPI_MAJOR_VERSION > 12 || \
+    (NVENCAPI_MAJOR_VERSION == 12 && NVENCAPI_MINOR_VERSION >= 2)
+        hevc.inputBitDepth = NV_ENC_BIT_DEPTH_8;
+        hevc.outputBitDepth = NV_ENC_BIT_DEPTH_8;
+#else
+        hevc.pixelBitDepthMinus8 = 0;
+#endif
+        // MPEG-TS wants parameter sets in band on every IDR; Matroska takes
+        // them once as extradata, which is what globalHeader asks for.
+        hevc.repeatSPSPPS = globalHeader ? 0u : 1u;
+        hevc.disableSPSPPS = globalHeader ? 1u : 0u;
+    }
 
     init_ = {};
     init_.version = NV_ENC_INITIALIZE_PARAMS_VER;
-    init_.encodeGUID = NV_ENC_CODEC_HEVC_GUID;
+    init_.encodeGUID = codecGuid;
     init_.presetGUID = presetGuid;
     init_.encodeWidth = uint32_t(w_);
     init_.encodeHeight = uint32_t(h_);
@@ -212,8 +236,9 @@ bool NvencDirect::open(CudaCtx& cuda, const VideoFormatDesc& show,
         return false;
     }
 
-    KLOUD_LOGI("nvenc-direct: hevc %dx%d @ %.3f fps, %d kbps CBR (%s/ull)", w_, h_,
-             fps, bitrateKbps, encoderPresetName(preset));
+    KLOUD_LOGI("nvenc-direct: %s %dx%d @ %.3f fps, %d kbps CBR (%s/ull)",
+             videoCodecName(codec_), w_, h_, fps, bitrateKbps,
+             encoderPresetName(preset));
     return true;
 }
 
@@ -254,18 +279,21 @@ void NvencDirect::close() {
     extradata_.clear();
     nextBitstream_ = 0;
     frameIdx_ = 0;
+    codec_ = VideoCodec::Hevc;
     eosSent_ = false;
 }
 
 bool NvencDirect::fillCodecpar(AVCodecParameters* par) const {
     if (!enc_) return false;
     par->codec_type = AVMEDIA_TYPE_VIDEO;
-    par->codec_id = AV_CODEC_ID_HEVC;
+    par->codec_id = codec_ == VideoCodec::Av1 ? AV_CODEC_ID_AV1
+                                              : AV_CODEC_ID_HEVC;
     par->codec_tag = 0;
     par->width = w_;
     par->height = h_;
     par->format = AV_PIX_FMT_NV12;
-    par->profile = AV_PROFILE_HEVC_MAIN;
+    par->profile = codec_ == VideoCodec::Av1 ? AV_PROFILE_AV1_MAIN
+                                             : AV_PROFILE_HEVC_MAIN;
     par->bit_rate = bitrate_;
     if (par->extradata) av_freep(&par->extradata);
     par->extradata_size = 0;

@@ -307,6 +307,7 @@ if(KLOUD_BUILD_TESTS)
     tests/gpu_composite_test.cpp
     tests/interop_test.cpp
     tests/nvenc_direct_test.cpp
+    tests/video_encoder_test.cpp
   )
   target_link_libraries(kloud_tests PRIVATE kloud_core kloud_gpu kloud_media Catch2::Catch2WithMain)
   target_include_directories(kloud_tests PRIVATE tools)

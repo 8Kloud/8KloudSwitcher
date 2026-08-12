@@ -13,6 +13,10 @@
 #include "core/MediaClock.h"
 #include "core/Stats.h"
 
+extern "C" {
+#include <libavutil/opt.h>
+}
+
 namespace kloud {
 
 SrtOutput::SrtOutput(gpu::VkEngine& vk, media::CudaCtx& cuda,
@@ -145,6 +149,15 @@ bool SrtOutput::openMux() {
         audIdx_ = as->index;
         // Don't let a stalled stream buffer the other for long (default 10s).
         oc_->max_interleave_delta = 500'000;  // 0.5 s in AV_TIME_BASE units
+    }
+
+    if (cfg_.encoder.codec == media::VideoCodec::Av1) {
+        const int r = av_opt_set_int(oc_->priv_data, "av1_mpegts_draft", 1, 0);
+        if (r < 0) {
+            KLOUD_LOGE("srt out: FFmpeg lacks AV1 MPEG-TS support; rebuild "
+                     "with packaging/build-ffmpeg-lgpl.sh");
+            return false;
+        }
     }
 
     if (avio_open2(&oc_->pb, cfg_.url.c_str(), AVIO_FLAG_WRITE,

@@ -65,6 +65,7 @@ TEST_CASE("show file preserves the exact output format") {
     saved.cfg.show.fpsD = 1001;
     saved.cfg.cleanOmtOut = true;
     saved.cfg.cleanOmtOutName = "8Kloud Switcher CLEAN TEST";
+    saved.cfg.srtCodec = media::VideoCodec::Av1;
     file.save(saved);
 
     ShowFile::State restored;
@@ -75,6 +76,7 @@ TEST_CASE("show file preserves the exact output format") {
     CHECK(restored.cfg.show.fpsD == 1001);
     CHECK(restored.cfg.cleanOmtOut);
     CHECK(restored.cfg.cleanOmtOutName == "8Kloud Switcher CLEAN TEST");
+    CHECK(restored.cfg.srtCodec == media::VideoCodec::Av1);
 }
 
 TEST_CASE("show file restores playlists, trim, speed, and loop mode") {

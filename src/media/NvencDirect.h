@@ -16,7 +16,8 @@ extern "C" {
 
 namespace kloud::media {
 
-// HEVC via the NVENC API in libnvidia-encode, bypassing libavcodec. Same tune
+// HEVC or AV1 via the NVENC API in libnvidia-encode, bypassing libavcodec.
+// Same tune
 // as the FFmpeg backend (EncoderConfig::preset + ultra-low-latency, CBR,
 // single-frame VBV, no B-frames, IDR ~2 s), but the render thread's NV12 pack buffers are
 // REGISTERED with NVENC once and encoded in place -- no per-frame
@@ -69,6 +70,7 @@ private:
     int w_ = 0, h_ = 0;
     int64_t bitrate_ = 0;
     uint32_t frameIdx_ = 0;
+    VideoCodec codec_ = VideoCodec::Hevc;
     bool eosSent_ = false;
 };
 

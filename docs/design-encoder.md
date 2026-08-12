@@ -35,16 +35,22 @@ Packets are always `AVPacket*`, so the MPEG-TS and Matroska muxers are
 identical across backends.
 
 `openVideoEncoder(cuda, show, cfg)` builds one. `EncoderConfig` carries the
-backend, the preset, the bitrate (0 = auto from resolution/fps), and whether
+codec, backend, preset, bitrate (0 = auto from resolution/fps), and whether
 the muxer wants a global header; `ffmpeg` and `direct` force a backend, and
-`auto` (the default) opens FFmpeg, falling back to direct only if `hevc_nvenc`
-is missing from the FFmpeg build.
+`auto` (the default) opens FFmpeg, falling back to direct if the selected
+codec's NVENC wrapper is unavailable.
+
+SRT can instead set `VideoCodec::Av1` (`--srt-codec av1`). FFmpeg selects
+`av1_nvenc`; the direct backend configures `NV_ENC_CODEC_AV1_GUID` and emits
+low-overhead OBUs plus sequence-header extradata. The recording path leaves
+the codec at its HEVC default. The private FFmpeg build applies the local
+AV1/MPEG-TS draft patch, and `SrtOutput` explicitly enables its muxer option.
 
 ## What each backend does
 
 | | `FfmpegNvenc` | `NvencDirect` |
 |---|---|---|
-| API | `hevc_nvenc` via libavcodec, CUDA hwframes on our primary context | `libnvidia-encode.so.1` (dlopen), ffnvcodec headers |
+| API | `hevc_nvenc` / `av1_nvenc` via libavcodec, CUDA hwframes on our primary context | `libnvidia-encode.so.1` (dlopen), HEVC/AV1 through ffnvcodec headers |
 | Input handling | `cuMemcpy2DAsync` into an FFmpeg pool frame, stream-synced | pack buffers **registered once** (`NV_ENC_REGISTER_RESOURCE`), encoded in place |
 | Per-frame GPU copy | one full frame (≈50 MB at 8K) | none |
 | Completion | `send_frame` + `receive_packet`, FFmpeg may pipeline a frame | `nvEncLockBitstream` blocks until the picture is done |
@@ -63,6 +69,7 @@ in-band parameter sets for MPEG-TS (extradata for Matroska).
 ./build/8kloud-switcher  --encoder ffmpeg --encoder-preset p4
 #   --encoder        auto | ffmpeg | direct
 #   --encoder-preset auto | p1..p7
+#   --srt-codec      hevc | av1
 ```
 
 `EngineConfig::encoder` / `::encoderPreset` reach both SRT output and the file

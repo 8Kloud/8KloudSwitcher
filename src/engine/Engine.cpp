@@ -353,7 +353,8 @@ bool Engine::start(const EngineConfig& cfg) {
             vk_, cuda_, *comp_, renderTL_,
             SrtOutConfig{cfg_.srtUrl,
                          {cfg_.encoder, cfg_.encoderPreset,
-                          cfg_.srtBitrateKbps, /*globalHeader=*/false}},
+                          cfg_.srtBitrateKbps, /*globalHeader=*/false,
+                          cfg_.srtCodec}},
             cfg_.show,
             cfg_.audio);
         if (!srtOut_->ok()) {

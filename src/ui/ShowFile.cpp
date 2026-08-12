@@ -36,6 +36,7 @@ bool ShowFile::State::cfgEquals(const EngineConfig& a, const EngineConfig& b) {
            a.cleanSdiOutRef == b.cleanSdiOutRef &&
            a.srtUrl == b.srtUrl &&
            a.srtBitrateKbps == b.srtBitrateKbps &&
+           a.srtCodec == b.srtCodec &&
            a.recordBitrateKbps == b.recordBitrateKbps && a.audio == b.audio &&
            a.masterAudioDelayMs == b.masterAudioDelayMs;
 }
@@ -109,6 +110,13 @@ bool ShowFile::load(State& st) const {
                         .toStdString();
     st.cfg.srtBitrateKbps =
         s.value("srtBitrateKbps", st.cfg.srtBitrateKbps).toInt();
+    {
+        const std::string codec =
+            s.value("srtCodec", QString::fromLatin1(
+                                    media::videoCodecName(st.cfg.srtCodec)))
+                .toString().toStdString();
+        media::parseVideoCodec(codec, st.cfg.srtCodec);
+    }
     st.cfg.recordBitrateKbps =
         s.value("recordBitrateKbps", st.cfg.recordBitrateKbps).toInt();
     st.cfg.audio = s.value("audio", st.cfg.audio).toBool();
@@ -223,6 +231,8 @@ void ShowFile::save(const State& st) const {
     s.setValue("cleanSdiOut", QString::fromStdString(st.cfg.cleanSdiOutRef));
     s.setValue("srtOut", QString::fromStdString(st.cfg.srtUrl));
     s.setValue("srtBitrateKbps", st.cfg.srtBitrateKbps);
+    s.setValue("srtCodec",
+               QString::fromLatin1(media::videoCodecName(st.cfg.srtCodec)));
     s.setValue("recordBitrateKbps", st.cfg.recordBitrateKbps);
     s.setValue("audio", st.cfg.audio);
     s.setValue("masterDelayMs", st.cfg.masterAudioDelayMs);

@@ -11,6 +11,17 @@
 
 namespace kloud::media {
 
+const char* videoCodecName(VideoCodec codec) {
+    return codec == VideoCodec::Av1 ? "av1" : "hevc";
+}
+
+bool parseVideoCodec(std::string_view text, VideoCodec& out) {
+    if (text == "hevc") out = VideoCodec::Hevc;
+    else if (text == "av1") out = VideoCodec::Av1;
+    else return false;
+    return true;
+}
+
 const char* encoderBackendName(EncoderBackend backend) {
     switch (backend) {
         case EncoderBackend::Ffmpeg: return "ffmpeg";
@@ -73,7 +84,8 @@ std::unique_ptr<IVideoEncoder> openVideoEncoder(CudaCtx& cuda,
         auto enc = std::make_unique<FfmpegNvenc>();
         if (enc->open(cuda, show, cfg)) return enc;
         if (cfg.backend == EncoderBackend::Ffmpeg) return nullptr;
-        KLOUD_LOGW("encoder: hevc_nvenc unavailable; falling back to direct NVENC");
+        KLOUD_LOGW("encoder: %s_nvenc unavailable; falling back to direct NVENC",
+                 videoCodecName(cfg.codec));
     }
     auto enc = std::make_unique<NvencDirect>();
     if (enc->open(cuda, show, cfg)) return enc;

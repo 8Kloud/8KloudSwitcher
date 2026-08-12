@@ -28,7 +28,7 @@ struct SrtOutConfig {
     media::EncoderConfig encoder;  // bitrate 0 = auto from resolution/fps
 };
 
-// SRT/HEVC program output. The render thread packs NV12 into per-FIF
+// SRT HEVC/AV1 program output. The render thread packs NV12 into per-FIF
 // exportable buffers and pushes {value, tick, fif} events; the encode thread
 // waits the render timeline, bridges the buffer into an FFmpeg CUDA hwframe
 // (copiedValue() is the render-side reuse handshake), and encodes; the mux

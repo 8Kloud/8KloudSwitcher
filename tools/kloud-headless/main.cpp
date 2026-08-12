@@ -197,6 +197,9 @@ int main(int argc, char** argv) {
         } else if (a == "--srt-bitrate") {
             const char* v = next();
             if (v) cfg.srtBitrateKbps = atoi(v);
+        } else if (a == "--srt-codec") {
+            const char* v = next();
+            if (!v || !kloud::media::parseVideoCodec(v, cfg.srtCodec)) return 2;
         } else if (a == "--encoder") {
             const char* v = next();
             if (!v || !kloud::media::parseEncoderBackend(v, cfg.encoder)) return 2;
@@ -299,6 +302,7 @@ int main(int argc, char** argv) {
                     "[--dsk-toggle-after S:K] [--control-port PORT] "
                     "[--encoder auto|ffmpeg|direct] "
                     "[--encoder-preset auto|p1..p7] "
+                    "[--srt-codec hevc|av1] "
                     "[--validate]\n");
             return 2;
         }

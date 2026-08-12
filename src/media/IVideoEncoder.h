@@ -19,11 +19,17 @@ extern "C" {
 
 namespace kloud::media {
 
+enum class VideoCodec { Hevc, Av1 };
+
+const char* videoCodecName(VideoCodec codec);
+// Accepts "hevc" and "av1"; false (and `out` untouched) otherwise.
+bool parseVideoCodec(std::string_view text, VideoCodec& out);
+
 // Which NVENC path a program encoder drives.
 enum class EncoderBackend {
     Auto,    // FFmpeg, falling back to Direct if it will not open
-    Ffmpeg,  // hevc_nvenc through libavcodec
-    Direct,  // NVENC API through libnvidia-encode
+    Ffmpeg,  // hevc_nvenc or av1_nvenc through libavcodec
+    Direct,  // NVENC API through libnvidia-encode (HEVC or AV1)
 };
 
 // NVENC speed/quality preset. Measured on real 4K content at our tuning
@@ -50,13 +56,14 @@ struct EncoderConfig {
     EncoderBackend backend = EncoderBackend::Auto;
     EncoderPreset preset = EncoderPreset::Auto;
     int bitrateKbps = 0;        // 0 = auto from resolution/fps
-    bool globalHeader = false;  // muxer takes SPS/PPS as extradata (Matroska)
+    bool globalHeader = false;  // muxer takes codec headers as extradata
+    VideoCodec codec = VideoCodec::Hevc;
 };
 
-// HEVC program encoder fed by the render thread's tight-pitch NV12 pack
+// Program encoder fed by the render thread's tight-pitch NV12 pack
 // buffers (luma rows then interleaved chroma, pitch == width, device memory).
 // Both backends are tuned the same way: no B-frames, CBR with a single-frame
-// VBV, IDR every ~2 s, in-band SPS/PPS unless the muxer wants a global header.
+// VBV, IDR every ~2 s, and the codec headers required by the muxer.
 // PTS is the media tick index in show timebase (fpsD/fpsN).
 //
 // `encode` returns only once `src` is free for reuse -- that return is the
@@ -82,8 +89,8 @@ public:
 };
 
 // Opens `backend` for this show; returns null if no backend opened. Auto tries
-// FFmpeg first (the tuned, measured default) and falls back to the direct
-// NVENC path when this FFmpeg build has no usable hevc_nvenc.
+// FFmpeg first (the tuned, measured default) and falls back to direct NVENC
+// when this FFmpeg build has no usable wrapper for the selected codec.
 std::unique_ptr<IVideoEncoder> openVideoEncoder(CudaCtx& cuda,
                                                 const VideoFormatDesc& show,
                                                 const EncoderConfig& cfg);

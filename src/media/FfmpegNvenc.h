@@ -20,10 +20,11 @@ extern "C" {
 
 namespace kloud::media {
 
-// hevc_nvenc via CUDA hwframes built on OUR primary context. Low-latency
+// hevc_nvenc or av1_nvenc via CUDA hwframes built on OUR primary context. Low-latency
 // tuned: EncoderConfig::preset + tune ull, CBR with single-frame VBV, no
-// B-frames, in-band SPS/PPS. MPEG-TS/SRT uses in-band headers; file recording requests
-// GLOBAL_HEADER for Matroska codec configuration. PTS is the media tick index
+// B-frames and in-band codec headers. AV1 also exports sequence-header
+// extradata for its MPEG-TS descriptor; file recording requests GLOBAL_HEADER
+// for Matroska codec configuration. PTS is the media tick index
 // in show timebase (fpsD/fpsN).
 class FfmpegNvenc final : public IVideoEncoder {
 public:

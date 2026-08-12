@@ -1,7 +1,7 @@
 # 8Kloud Switcher
 
 A live video switcher for Linux + NVIDIA: OMT, SDI and SRT inputs, program/preview
-switching with transitions, OMT, SDI and SRT (HEVC/NVENC) program outputs, full audio
+switching with transitions, OMT, SDI and SRT (HEVC or AV1/NVENC) program outputs, full audio
 mixer, Qt 6 GUI with Vulkan multiview. Built for low latency at up to 8K 59.94p.
 
 Status: **v1 complete (M0–M6), v2 frame sync landed**. 8K-hardened engine (30-min soak: zero
@@ -34,6 +34,9 @@ ffmpeg -fflags nobuffer -flags low_delay -i "srt://HOST:9710?mode=caller" -vn -f
 # SRT ingest as an input (audio decodes too; trim its lateness per input):
 ./build/8kloud-switcher --srt-input "srt://HOST:9710?mode=caller&latency=120000" \
     --input "HOST (CamB)"
+# AV1 output (requires AV1 NVENC hardware and the patched private FFmpeg build):
+./build/8kloud-switcher --srt-codec av1 \
+    --srt-out "srt://:9710?mode=listener&latency=120000"
 # A/V sync check on a TS capture (needs testgen content on program):
 ffmpeg -y -copyts -i "srt://HOST:9710?mode=caller" -c copy -avoid_negative_ts disabled \
        -muxpreload 0 -muxdelay 0 -t 20 cap.ts && python scripts/av_offset_ts.py cap.ts
@@ -120,10 +123,15 @@ holds full rate; keyers-off cost is nil).
 ## Encoder backends
 
 HEVC program output (SRT and recording) runs through `hevc_nvenc` by default.
+A patched FFmpeg adds draft AV1 carriage in MPEG-TS; `--srt-codec av1` selects
+`av1_nvenc` for SRT output. SRT input detects and decodes either codec. AV1 is
+an SRT-only choice: Matroska recordings remain HEVC, and AV1 requires an
+AV1-capable NVIDIA encoder/decoder. Both FFmpeg and direct NVENC backends
+support it.
 A second backend drives NVENC directly through `libnvidia-encode`, so an FFmpeg
 build without `hevc_nvenc` cannot take program output down; `--encoder
 auto|ffmpeg|direct` selects one in either executable (`auto` falls back to the
-direct path only when FFmpeg has no usable encoder). The two are configured
+direct path when FFmpeg has no usable HEVC or AV1 encoder). The two are configured
 identically (ultra-low-latency, CBR, single-frame VBV, no B-frames) and measure
 the same at every resolution tested.
 
@@ -189,10 +197,17 @@ gitignored and never committed):
 **2. Build:**
 
 ```sh
-cmake -B build -G Ninja
+# Required for AV1/MPEG-TS and for redistributable packages. This builds the
+# pinned LGPL FFmpeg and applies packaging/patches/ffmpeg automatically.
+packaging/build-ffmpeg-lgpl.sh
+cmake -B build -G Ninja -DKLOUD_FFMPEG_PREFIX=build/ffmpeg-lgpl
 cmake --build build
 ctest --test-dir build          # unit tests
 ```
+
+For HEVC-only local development, omitting `KLOUD_FFMPEG_PREFIX` still uses the
+system FFmpeg. AV1 output fails with a clear startup error if that FFmpeg does
+not expose the patched `av1_mpegts_draft` muxer option.
 
 ## Debian package
 

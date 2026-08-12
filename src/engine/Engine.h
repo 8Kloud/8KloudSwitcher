@@ -60,6 +60,7 @@ struct EngineConfig {
     std::string cleanSdiOutRef;
     std::string srtUrl;      // empty = SRT output off
     int srtBitrateKbps = 0;  // 0 = auto
+    media::VideoCodec srtCodec = media::VideoCodec::Hevc;
     int recordBitrateKbps = 0;  // 0 = auto; independent of SRT output
     // NVENC path and speed/quality preset for SRT output and recording
     // (--encoder, --encoder-preset).

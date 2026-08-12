@@ -1,0 +1,376 @@
+diff --git a/libavformat/Makefile b/libavformat/Makefile
+index ab5551a..34f6ef5 100644
+--- a/libavformat/Makefile
++++ b/libavformat/Makefile
+@@ -396,8 +396,8 @@ OBJS-$(CONFIG_MPEG2SVCD_MUXER)           += mpegenc.o
+ OBJS-$(CONFIG_MPEG2VIDEO_MUXER)          += rawenc.o
+ OBJS-$(CONFIG_MPEG2VOB_MUXER)            += mpegenc.o
+ OBJS-$(CONFIG_MPEGPS_DEMUXER)            += mpeg.o
+-OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o
+-OBJS-$(CONFIG_MPEGTS_MUXER)              += mpegtsenc.o
++OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o av1.o
++OBJS-$(CONFIG_MPEGTS_MUXER)              += mpegtsenc.o av1.o
+ OBJS-$(CONFIG_MPEGVIDEO_DEMUXER)         += mpegvideodec.o rawdec.o
+ OBJS-$(CONFIG_MPJPEG_DEMUXER)            += mpjpegdec.o
+ OBJS-$(CONFIG_MPJPEG_MUXER)              += mpjpeg.o
+diff --git a/libavformat/mpegts.c b/libavformat/mpegts.c
+index 077db4d..467d972 100644
+--- a/libavformat/mpegts.c
++++ b/libavformat/mpegts.c
+@@ -873,6 +873,7 @@ static const StreamType HLS_SAMPLE_ENC_types[] = {
+ };
+ 
+ static const StreamType REGD_types[] = {
++    { MKTAG('A', 'V', '0', '1'), AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_AV1   },
+     { MKTAG('d', 'r', 'a', 'c'), AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_DIRAC },
+     { MKTAG('A', 'C', '-', '3'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AC3   },
+     { MKTAG('A', 'C', '-', '4'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AC4   },
+@@ -1022,12 +1023,54 @@ static void new_data_packet(const uint8_t *buffer, int len, AVPacket *pkt)
+     pkt->size = len;
+ }
+ 
++static int av1_mpegts_unescape(uint8_t *data, int size)
++{
++    int src = 0, dst = 0, obu_count = 0;
++
++    while (src < size) {
++        int zero_count = 0;
++
++        if (src + 3 > size || data[src] || data[src + 1] || data[src + 2] != 1)
++            return AVERROR_INVALIDDATA;
++        src += 3;
++        obu_count++;
++
++        while (src < size &&
++               !(src + 3 <= size && !data[src] && !data[src + 1] &&
++                 data[src + 2] == 1)) {
++            uint8_t value = data[src++];
++
++            if (zero_count >= 2 && value == 3) {
++                if (src >= size || data[src] > 3)
++                    return AVERROR_INVALIDDATA;
++                zero_count = 0;
++                continue;
++            }
++            data[dst++] = value;
++            zero_count = value == 0 ? zero_count + 1 : 0;
++        }
++    }
++
++    return obu_count ? dst : AVERROR_INVALIDDATA;
++}
++
+ static int new_pes_packet(PESContext *pes, AVPacket *pkt)
+ {
+     uint8_t *sd;
++    int ret;
+ 
+     av_packet_unref(pkt);
+ 
++    if (pes->st->codecpar->codec_id == AV_CODEC_ID_AV1) {
++        ret = av1_mpegts_unescape(pes->buffer->data, pes->data_index);
++        if (ret < 0) {
++            av_log(pes->stream, AV_LOG_ERROR,
++                   "Invalid AV1 MPEG-TS access unit\n");
++            return ret;
++        }
++        pes->data_index = ret;
++    }
++
+     pkt->buf  = pes->buffer;
+     pkt->data = pes->buffer->data;
+     pkt->size = pes->data_index;
+@@ -1859,6 +1902,22 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
+             st->disposition |= AV_DISPOSITION_STILL_IMAGE;
+         }
+         break;
++    case AV1_VIDEO_DESCRIPTOR:
++        if (st->codecpar->codec_id == AV_CODEC_ID_AV1) {
++            int marker_version, profile_level;
++
++            if (desc_len != 4)
++                return AVERROR_INVALIDDATA;
++            marker_version = get8(pp, desc_end);
++            profile_level = get8(pp, desc_end);
++            if (marker_version != 0x81 || profile_level < 0)
++                return AVERROR_INVALIDDATA;
++            st->codecpar->profile = profile_level >> 5;
++            st->codecpar->level = profile_level & 0x1f;
++            *pp = desc_end;
++            sti->need_context_update = 1;
++        }
++        break;
+     case SL_DESCRIPTOR:
+         desc_es_id = get16(pp, desc_end);
+         if (desc_es_id < 0)
+diff --git a/libavformat/mpegts.h b/libavformat/mpegts.h
+index 2bc5344..485234d 100644
+--- a/libavformat/mpegts.h
++++ b/libavformat/mpegts.h
+@@ -203,6 +203,7 @@ https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/
+ #define METADATA_DESCRIPTOR          0x26
+ #define METADATA_STD_DESCRIPTOR      0x27
+ /* descriptor_tag values [0x40, 0xff] are User Private */
++#define AV1_VIDEO_DESCRIPTOR         0x80
+ 
+ /* DVB descriptor tag values [0x40, 0x7F] from
+    ETSI EN 300 468 Table 12: Possible locations of descriptors */
+diff --git a/libavformat/mpegtsenc.c b/libavformat/mpegtsenc.c
+index ae1b521..b460aa9 100644
+--- a/libavformat/mpegtsenc.c
++++ b/libavformat/mpegtsenc.c
+@@ -29,6 +29,8 @@
+ #include "libavutil/opt.h"
+ 
+ #include "libavcodec/ac3_parser_internal.h"
++#include "libavcodec/av1.h"
++#include "libavcodec/av1_parse.h"
+ #include "libavcodec/bytestream.h"
+ #include "libavcodec/defs.h"
+ #include "libavcodec/h264.h"
+@@ -37,6 +39,7 @@
+ #include "libavcodec/startcode.h"
+ 
+ #include "avformat.h"
++#include "av1.h"
+ #include "avio_internal.h"
+ #include "internal.h"
+ #include "mpegts.h"
+@@ -132,6 +135,7 @@ typedef struct MpegTSWrite {
+     uint8_t provider_name[256];
+ 
+     int omit_video_pes_length;
++    int av1_mpegts_draft;
+ } MpegTSWrite;
+ 
+ /* a PES packet header is generated every DEFAULT_PES_HEADER_FREQ packets */
+@@ -352,6 +356,48 @@ static void put_registration_descriptor(uint8_t **q_ptr, uint32_t tag)
+     *q_ptr = q;
+ }
+ 
++static int put_av1_video_descriptor(AVFormatContext *s, uint8_t **q_ptr,
++                                    const AVCodecParameters *par)
++{
++    AV1SequenceParameters seq;
++    uint8_t *q = *q_ptr;
++    int hdr, wcg, hdr_wcg_idc;
++    int ret = ff_av1_parse_seq_header(&seq, par->extradata,
++                                      par->extradata_size);
++
++    if (ret < 0) {
++        av_log(s, AV_LOG_ERROR,
++               "AV1 MPEG-TS requires sequence-header extradata\n");
++        return ret;
++    }
++
++    hdr = seq.transfer_characteristics == AVCOL_TRC_SMPTE2084 ||
++          seq.transfer_characteristics == AVCOL_TRC_ARIB_STD_B67;
++    wcg = seq.color_primaries == AVCOL_PRI_BT2020;
++    if (seq.transfer_characteristics == AVCOL_TRC_UNSPECIFIED ||
++        seq.color_primaries == AVCOL_PRI_UNSPECIFIED || (hdr && !wcg))
++        hdr_wcg_idc = 3;
++    else if (hdr)
++        hdr_wcg_idc = 2;
++    else if (wcg)
++        hdr_wcg_idc = 1;
++    else
++        hdr_wcg_idc = 0;
++
++    *q++ = AV1_VIDEO_DESCRIPTOR;
++    *q++ = 4;
++    *q++ = 0x80 | 1; /* marker, descriptor version 1 */
++    *q++ = seq.profile << 5 | seq.level;
++    *q++ = seq.tier << 7 | (seq.bitdepth > 8) << 6 |
++           (seq.bitdepth == 12) << 5 | seq.monochrome << 4 |
++           seq.chroma_subsampling_x << 3 |
++           seq.chroma_subsampling_y << 2 | seq.chroma_sample_position;
++    *q++ = hdr_wcg_idc << 6; /* no initial presentation delay */
++    *q_ptr = q;
++
++    return 0;
++}
++
+ static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
+ {
+     MpegTSWrite *ts = s->priv_data;
+@@ -390,6 +436,9 @@ static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
+     case AV_CODEC_ID_VC1:
+         stream_type = STREAM_TYPE_VIDEO_VC1;
+         break;
++    case AV_CODEC_ID_AV1:
++        stream_type = STREAM_TYPE_PRIVATE_DATA;
++        break;
+     case AV_CODEC_ID_MP2:
+     case AV_CODEC_ID_MP3:
+         if (   st->codecpar->sample_rate > 0
+@@ -802,7 +851,13 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
+             }
+         break;
+         case AVMEDIA_TYPE_VIDEO:
+-            if (stream_type == STREAM_TYPE_VIDEO_DIRAC) {
++            if (codec_id == AV_CODEC_ID_AV1 && ts->av1_mpegts_draft) {
++                put_registration_descriptor(&q, MKTAG('A', 'V', '0', '1'));
++                if (put_av1_video_descriptor(s, &q, st->codecpar) < 0) {
++                    err = 1;
++                    break;
++                }
++            } else if (stream_type == STREAM_TYPE_VIDEO_DIRAC) {
+                 put_registration_descriptor(&q, MKTAG('d', 'r', 'a', 'c'));
+             } else if (stream_type == STREAM_TYPE_VIDEO_VC1) {
+                 put_registration_descriptor(&q, MKTAG('V', 'C', '-', '1'));
+@@ -1114,6 +1169,21 @@ static int mpegts_init(AVFormatContext *s)
+         }
+     }
+ 
++    if (ts->av1_mpegts_draft) {
++        for (i = 0; i < s->nb_streams; i++) {
++            AV1SequenceParameters seq;
++            AVCodecParameters *par = s->streams[i]->codecpar;
++
++            if (par->codec_id == AV_CODEC_ID_AV1 &&
++                ff_av1_parse_seq_header(&seq, par->extradata,
++                                        par->extradata_size) < 0) {
++                av_log(s, AV_LOG_ERROR,
++                       "AV1 MPEG-TS requires sequence-header extradata\n");
++                return AVERROR_INVALIDDATA;
++            }
++        }
++    }
++
+     ts->m2ts_video_pid   = M2TS_VIDEO_PID;
+     ts->m2ts_audio_pid   = M2TS_AUDIO_START_PID;
+     ts->m2ts_pgssub_pid  = M2TS_PGSSUB_START_PID;
+@@ -1458,7 +1528,9 @@ static int get_pes_stream_id(AVFormatContext *s, AVStream *st, int stream_id, in
+     MpegTSWrite *ts = s->priv_data;
+     *async = 0;
+     if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+-        if (st->codecpar->codec_id == AV_CODEC_ID_DIRAC)
++        if (st->codecpar->codec_id == AV_CODEC_ID_AV1 && ts->av1_mpegts_draft)
++            return STREAM_ID_PRIVATE_STREAM_1;
++        else if (st->codecpar->codec_id == AV_CODEC_ID_DIRAC)
+             return STREAM_ID_EXTENDED_STREAM_ID;
+         else
+             return STREAM_ID_VIDEO_STREAM_0;
+@@ -1597,6 +1669,8 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
+             if (ts_st->pcr_period)
+                 write_pcr = 1;
+             set_af_flag(buf, 0x40);
++            if (st->codecpar->codec_id == AV_CODEC_ID_AV1 && ts->av1_mpegts_draft)
++                set_af_flag(buf, 0x20);
+             q = get_ts_payload_start(buf);
+         }
+         if (write_pcr) {
+@@ -1681,7 +1755,9 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
+                 *q++ = len;
+                 val  = 0x80;
+                 /* data alignment indicator is required for subtitle and data streams */
+-                if (st->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE || st->codecpar->codec_type == AVMEDIA_TYPE_DATA)
++                if (st->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE ||
++                    st->codecpar->codec_type == AVMEDIA_TYPE_DATA ||
++                    (st->codecpar->codec_id == AV_CODEC_ID_AV1 && ts->av1_mpegts_draft))
+                     val |= 0x04;
+                 *q++ = val;
+                 *q++ = flags;
+@@ -1863,6 +1939,80 @@ static uint8_t *h26x_prefix_aud(const uint8_t *aud, const int aud_size,
+     return data;
+ }
+ 
++static size_t av1_escape_obu(uint8_t *dst, const uint8_t *src, size_t size)
++{
++    size_t out = 0;
++    int zero_count = 0;
++
++    for (size_t i = 0; i < size; i++) {
++        if (zero_count >= 2 && src[i] <= 3) {
++            if (dst)
++                dst[out] = 3;
++            out++;
++            zero_count = 0;
++        }
++        if (dst)
++            dst[out] = src[i];
++        out++;
++        zero_count = src[i] == 0 ? zero_count + 1 : 0;
++    }
++
++    return out;
++}
++
++static int av1_mpegts_reformat(AVFormatContext *s, const uint8_t *src,
++                               int src_size, uint8_t **dst, int *dst_size)
++{
++    const uint8_t *p = src, *end = src + src_size;
++    uint8_t *out, *q;
++    size_t total = 0;
++
++    while (p < end) {
++        int64_t obu_size;
++        int start_pos, type, temporal_id, spatial_id;
++        int len = parse_obu_header(p, end - p, &obu_size, &start_pos,
++                                   &type, &temporal_id, &spatial_id);
++
++        if (len < 0)
++            return len;
++        if (type == AV1_OBU_TILE_LIST) {
++            av_log(s, AV_LOG_ERROR,
++                   "Tile List OBUs are forbidden in AV1 MPEG-TS\n");
++            return AVERROR_INVALIDDATA;
++        }
++        if (total > INT_MAX - 3 ||
++            av1_escape_obu(NULL, p, len) > INT_MAX - total - 3)
++            return AVERROR(ERANGE);
++        total += 3 + av1_escape_obu(NULL, p, len);
++        p += len;
++    }
++
++    out = av_malloc(total + AV_INPUT_BUFFER_PADDING_SIZE);
++    if (!out)
++        return AVERROR(ENOMEM);
++
++    p = src;
++    q = out;
++    while (p < end) {
++        int64_t obu_size;
++        int start_pos, type, temporal_id, spatial_id;
++        int len = parse_obu_header(p, end - p, &obu_size, &start_pos,
++                                   &type, &temporal_id, &spatial_id);
++
++        av_assert1(len > 0);
++        *q++ = 0;
++        *q++ = 0;
++        *q++ = 1;
++        q += av1_escape_obu(q, p, len);
++        p += len;
++    }
++    memset(q, 0, AV_INPUT_BUFFER_PADDING_SIZE);
++
++    *dst = out;
++    *dst_size = total;
++    return 0;
++}
++
+ #define H264_NAL_TYPE(state) (state & 0x1f)
+ #define HEVC_NAL_TYPE(state) ((state & 0x7e) >> 1)
+ #define VVC_NAL_TYPE(state)  ((state >> 11) & 0x1f)
+@@ -1971,6 +2121,12 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
+             buf     = data;
+             size    = new_pkt_size;
+         }
++    } else if (st->codecpar->codec_id == AV_CODEC_ID_AV1 &&
++               ts->av1_mpegts_draft) {
++        int ret = av1_mpegts_reformat(s, pkt->data, pkt->size, &data, &size);
++        if (ret < 0)
++            return ret;
++        buf = data;
+     } else if (st->codecpar->codec_id == AV_CODEC_ID_AAC) {
+         if (pkt->size < 2) {
+             av_log(s, AV_LOG_ERROR, "AAC packet too short\n");
+@@ -2389,6 +2545,8 @@ static const AVOption options[] = {
+     { "tables_version", "set PAT, PMT, SDT and NIT version", OFFSET(tables_version), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 31, ENC },
+     { "omit_video_pes_length", "Omit the PES packet length for video packets",
+       OFFSET(omit_video_pes_length), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, ENC },
++    { "av1_mpegts_draft", "Enable AOM AV1 MPEG-TS draft carriage",
++      OFFSET(av1_mpegts_draft), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, ENC },
+     { "pcr_period", "PCR retransmission time in milliseconds",
+       OFFSET(pcr_period_ms), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, ENC },
+     { "pat_period", "PAT/PMT retransmission time limit in seconds",
