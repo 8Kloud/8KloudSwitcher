@@ -94,20 +94,53 @@ the native C implementation of the same C API: lay it out as
 `third_party/omt/{include/libomt.h,lib/libomt.so,lib/libvmx.so}` exactly like
 the stock SDK (or point `-DOMT_SDK_DIR` at such a directory). No source changes
 are needed; senders and receivers interoperate with the stock library in both
-directions. Measured on the same host (testgen -> latmeter loopback, same
-`libvmx.so`), CPU and latency are identical within run-to-run noise at 1080p,
-4K and 8K because the VMX codec dominates; libomt-c's receiver uses 25-100 MB
-less memory per process and the library is 160 KB instead of 8.6 MB.
+directions.
 
-One thing libomt-c does that the stock library cannot: a **pre-built decoder
-pool**. Creating a VMX decoder instance is the one expensive step on a new
-connection (the codec clears its planes: ~5 ms at 1080p, ~70 ms at 8K), and
-the stock library does it inside the first received frame, which shows on
-every connection as a first-frame latency spike and a dropped frame or two
-(8K: 80 ms max, 2 gaps, measured). When CMake reports `OMT decoder prewarm:
-available`, `Engine::start` pre-builds decoders for the show format before
-Vulkan initialises (one per assigned OMT input, at most four) and every OMT
-input asks its receiver to prepare its decoder while the connection comes up;
-a re-patched input's decoder returns to the pool. Result at 8K: 10 ms max and
-no gaps on the first second. Wrong guesses (an input carrying a different
-format than the show) cost nothing but the idle decoder's memory.
+### Decoder pre-build
+
+Creating a VMX decoder instance is the one expensive step on a new OMT
+connection (`VMX_Create` fills its planes and stream buffers), and the stock
+library does it inside the first received frame. When CMake reports
+`OMT decoder prewarm: available`, `Engine::start` pre-builds decoders for the
+show format before Vulkan initialises (one per assigned OMT input, at most
+four) and every OMT input asks its receiver to prepare its decoder while the
+connection comes up; a re-patched input's decoder returns to the pool. Wrong
+guesses (an input carrying a different format than the show) cost nothing but
+the idle decoder's memory.
+
+### Measurements (2026-09-01)
+
+Same-host loopback, `kloud-testgen` → `kloud-latmeter`, same method as the
+bench above (20 s steady-state window, CPU from `/proc`, one run each). "New"
+is libomt-c at `92713c0` with libvmx patched to trim `VMX_Create`'s memsets
+(openmediatransport/libvmx PR #13); "stock" is the NativeAOT libomt with the
+unpatched libvmx. Throughput and CPU are the codec's and do not move; what
+changes is memory and everything around the first frame.
+
+| 8K 59.94 | stock | new |
+|---|---|---|
+| bars: send / recv CPU | 2.86 c / 2.87 c | 2.87 c / 2.87 c |
+| bars: send / recv RSS | 1868 MB / 541 MB | 1688 MB / 360 MB |
+| bars: fps, gaps | 59.84, 2 | 59.94, 0 |
+| bars: latency avg / max | 8.3 / 80 ms | 8.0 / 25 ms |
+| mid-entropy: send / recv CPU | 3.02 c / 3.09 c | 3.05 c / 3.05 c |
+| mid-entropy: send / recv RSS | 1956 MB / 621 MB | 1699 MB / 377 MB |
+| mid-entropy: fps, gaps | 59.83, 2 | 59.94, 0 |
+| mid-entropy: latency avg / max | 10.2 / 82 ms | 10.1 / 32 ms |
+
+1080p and 4K: CPU and latency identical within run-to-run noise (1080p noise
+0.43/0.39 c vs 0.40/0.36 c send/recv; 4K mid 0.50/0.49 c vs 0.46/0.48 c),
+receiver RSS 40 MB lower.
+
+The "max" and "gaps" columns are the connect transient: a receiver joining a
+running sender pays the decoder build on its first frame. Isolated with
+receivers joining 15 s and 25 s after the sender started:
+
+| 8K bars, first second after connect | max latency | dropped frames |
+|---|---|---|
+| stock libomt + stock libvmx | 80 ms | 2 |
+| stock libomt + patched libvmx (`VMX_Create` 55 → 13 ms) | 27 ms | 0 |
+| libomt-c, decoder pool prewarmed | 8–9 ms | 0 |
+
+Steady state at 8K never exceeds 9 ms in either build. `VMX_Create` itself,
+best of five: 1080p 3.2 → 1.6 ms, 4K 15.1 → 3.1 ms, 8K 55.2 → 12.8 ms.

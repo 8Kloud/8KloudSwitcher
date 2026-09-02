@@ -19,7 +19,8 @@ auto-aligns the input's audio to the re-timed video — the cross-session A/V ph
 collapses to a constant (design + measurements: `docs/design-framesync.md`,
 `docs/bench-framesync.md`). Bench record: `docs/bench-m5.md`; tuning: `docs/tuning.md`.
 For 8K ingest prefer SRT/HEVC (NVDEC) or SDI; OMT/VMX carries realistic 8K content
-(`docs/bench-omt.md`). Milestones: M6 (v1 close), M5 (8K hardening), M4 (audio),
+(`docs/bench-omt.md`; with libomt-c and its decoder pool a new 8K connection's
+first frame lands on time, `docs/omt.md`). Milestones: M6 (v1 close), M5 (8K hardening), M4 (audio),
 M3+M3.5 (SRT/HEVC both directions), M2 (switching/multiview), M1 (Vulkan engine), M0 (bench).
 
 OMT sources are addressed by their full discovery name, `HOSTNAME (Name)` — the
