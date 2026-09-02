@@ -1,3 +1,17 @@
+8kloud-switcher (0.7.2) resolute; urgency=medium
+
+  * Build the LGPL FFmpeg with libdav1d (BSD-2-Clause) so AV1 decodes in
+    software where no NVDEC device is available. FFmpeg's native av1
+    decoder is a hwaccel-only front end, so without it the AV1 program-
+    output round-trip test failed and operator AV1 media needed a GPU.
+  * Record the private FFmpeg's runtime dependencies (libsrt, gnutls,
+    dav1d, zlib, bzip2, lzma) in Depends. They were previously never
+    scanned, so the package installed cleanly on a fresh host and then
+    failed to load. debian/shlibs.local keeps dpkg-shlibdeps from
+    resolving the private libavcodec to the distribution's GPL build.
+
+ -- Devin Block <devin@devinblock.com>  Wed, 02 Sep 2026 01:47:07 +0000
+
 8kloud-switcher (0.7.1) resolute; urgency=medium
 
   * Make libomt-c and the patched libvmx the default OMT runtime:
