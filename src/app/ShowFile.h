@@ -6,18 +6,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 #pragma once
-#include <QString>
-
+#include <string>
 #include <vector>
 
 #include "engine/Engine.h"
 
-namespace kloud::ui {
+namespace kloud::app {
 
 // Show-file persistence: everything needed to restore a show after a
 // restart, in a human-readable INI the operator can copy between machines.
-// Load builds the EngineConfig before engine start; the control-surface and
-// mixer parts are applied after. The GUI saves on a debounced timer.
+// The layout is the one the Qt GUI wrote through QSettings (core/Ini.h keeps
+// the dialect), so an existing show.ini keeps working. Load builds the
+// EngineConfig before engine start; the control-surface and mixer parts are
+// applied after. The app saves on a debounced timer.
 class ShowFile {
 public:
     struct ChannelState {
@@ -59,18 +60,20 @@ public:
         static bool cfgEquals(const EngineConfig& a, const EngineConfig& b);
     };
 
-    explicit ShowFile(QString path);  // empty = default config location
+    // Empty = the default location, $XDG_CONFIG_HOME/8KloudSwitcher/show.ini
+    // (~/.config/8KloudSwitcher/show.ini). The directory is created.
+    explicit ShowFile(std::string path);
 
-    const QString& path() const { return path_; }
+    const std::string& path() const { return path_; }
     bool exists() const;
 
     // Overwrites cfg/control fields with the stored show; returns false when
     // no file exists (state left untouched).
     bool load(State& state) const;
-    void save(const State& state) const;
+    bool save(const State& state) const;
 
 private:
-    QString path_;
+    std::string path_;
 };
 
-}  // namespace kloud::ui
+}  // namespace kloud::app

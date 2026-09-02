@@ -471,15 +471,20 @@ bool Engine::buildLabelAtlas() {
             font::renderLabel(text, pixels.data() + size_t(row) * rowW * rowH * 4,
                               rowW, rowH);
     };
-    // The Qt presenter draws every multiview label at final display
-    // resolution. The atlas supplies only the opaque strip behind the text.
-    renderRow(0, "");
-    renderRow(1, "");
+    // The text is baked into the wall: the OMT multiview sender and the
+    // web GUI's MJPEG stream both show this image as-is, so the labels must
+    // be legible in the frame itself. Each strip spans its full cell width
+    // (the tile samples the whole row, text left-aligned).
+    renderRow(0, "PROGRAM");
+    renderRow(1, "PREVIEW");
     used[0] = rowW;
     used[1] = rowW;
-    for (size_t i = 0; i < cfg_.inputs.size(); ++i) {
-        renderRow(2 + int(i), "");
-        used[2 + i] = rowW;
+    {
+        std::lock_guard lk(replaceM_);
+        for (size_t i = 0; i < cfg_.inputs.size(); ++i) {
+            renderRow(2 + int(i), inputLabel(cfg_.inputs[i], int(i)));
+            used[2 + i] = rowW;
+        }
     }
 
     gpu::Image atlas = vk_.createImage2D(
@@ -862,7 +867,9 @@ void Engine::renderLoop(std::stop_token st) {
                    {job.dskAudioFollow[0], job.dskAudioFollow[1]},
                    int(switcher_.transitionType()),
                    int(switcher_.transitionDuration()),
-                   switcher_.transitionSoftness()};
+                   switcher_.transitionSoftness(),
+                   {int(switcher_.dskDuration(0)),
+                    int(switcher_.dskDuration(1))}};
         }
 
         // -- tally to sources (both buses are hot during a transition; a

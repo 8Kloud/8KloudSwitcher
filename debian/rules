@@ -42,7 +42,7 @@ override_dh_auto_configure:
 # on hardware with ctest after install.
 override_dh_auto_test:
 	cd obj-* && ctest --output-on-failure \
-	    -E 'gpu|interop|nvenc|^ui: ' || echo "ctest: skipped/failed off-GPU builder"
+	    -E 'gpu|interop|nvenc|^web: ' || echo "ctest: skipped/failed off-GPU builder"
 
 # Everything in the private libdir is ours to ship and resolve by RPATH: it
 # must not generate a dependency on a system package, and must not register

@@ -15,7 +15,6 @@ Build-Depends: debhelper-compat (= 13),
                libswresample-dev,
                libswscale-dev,
                libffmpeg-nvenc-dev,
-               qt6-base-dev,
                catch2
 # Also required at build time, but deliberately not listed: the CUDA toolkit
 # headers (cuda.h). Ubuntu 26.04 only packages nvidia-cuda-dev at 12.4, which
@@ -40,9 +39,11 @@ Description: Live video switcher for Linux and NVIDIA, up to 8K 59.94p
  .
  It carries a full audio mixer with per-input frame sync, two alpha downstream
  keyers, paced local clip playlists, still-image inputs, a clean feed without
- DSK graphics, and a Qt 6 GUI with a Vulkan multiview. A plain-text TCP
- control port drives it remotely, with a Bitfocus Companion module supplied.
+ DSK graphics, a browser-based production console served by the switcher
+ itself, and the multiview wall as an OMT source. A plain-text TCP control
+ port drives it remotely, with a Bitfocus Companion module supplied.
  .
- This package ships the GUI (8kloud-switcher), the headless engine
- (kloud-headless) and the bench tools (kloud-testgen, kloud-latmeter).
+ This package ships the console (8kloud-switcher: engine + web GUI), the
+ headless engine (kloud-headless) and the bench tools (kloud-testgen,
+ kloud-latmeter).
  It requires an NVIDIA GPU with a current proprietary driver.

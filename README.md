@@ -2,14 +2,15 @@
 
 A live video switcher for Linux + NVIDIA: OMT, SDI and SRT inputs, program/preview
 switching with transitions, OMT, SDI and SRT (HEVC or AV1/NVENC) program outputs, full audio
-mixer, Qt 6 GUI with Vulkan multiview. Built for low latency at up to 8K 59.94p.
+mixer, a browser-based production console, and the multiview wall as an OMT source. Built
+for low latency at up to 8K 59.94p.
 
 Status: **v1 complete (M0–M6), v2 frame sync landed**. 8K-hardened engine (30-min soak: zero
 tick overruns, 1.5-frame latency, <2 cores full pipeline, NVENC 54%), full audio mixer (A/V
 within ±8 ms on network and SRT paths at 1080p and 8K), live source picker (swap
 OMT/SDI/SRT sources per input mid-show), show-file persistence (restart restores
 everything), health banners,
-runtime counters in the GUI, HEVC/AAC program recording, paced local clip
+runtime counters in the console, HEVC/AAC program recording, paced local clip
 playlists with trim, speed, and transport controls, and static raster inputs
 with native alpha. A parallel clean feed can be recorded or sent over OMT
 without DSK graphics. Per-input **frame sync**: re-times a source onto the output tick
@@ -45,10 +46,19 @@ ffmpeg -y -copyts -i "srt://HOST:9710?mode=caller" -c copy -avoid_negative_ts di
 Run it:
 ```sh
 ./build/kloud-testgen --name CamA &  ./build/kloud-testgen --name CamB &
-# or kloud-headless for no GUI
+# or kloud-headless for no console at all
 ./build/8kloud-switcher --input "$(hostname -s | tr a-z A-Z) (CamA)" \
                         --input "$(hostname -s | tr a-z A-Z) (CamB)"
+# then open http://<switcher-host>:9924/ in a browser
 ```
+
+There is no local window. The **console is a web page** served by `8kloud-switcher`
+itself (`--web-port N`, default 9924, `0` to disable) with the multiview streamed to
+the browser as JPEG frames, and the **multiview wall is an OMT source** ("8Kloud
+Switcher MV" by default, labels and tally baked in) that any OMT receiver on the
+network can put on a real monitor. Both are described in
+[`docs/web-gui.md`](docs/web-gui.md). Like the remote-control port the web GUI
+trusts the LAN: there is no authentication.
 
 The show (inputs, outputs, transition, program/preview, full mixer state) persists to
 `~/.config/8KloudSwitcher/show.ini` (or `--show-file PATH`) and restores on restart; CLI flags
@@ -62,13 +72,17 @@ headless `--decklink-input 0`), and the manual field takes an `srt://`, `omt://`
 The same dialog sets the input's frame sync (Off / Trim only /
 1–4 frames; headless: `--framesync IDX[:FRAMES]`). Use 1 frame for free-running cameras
 you switch between often (constant A/V at +1 frame latency); Trim only suits audio-early
-sources like SRT loopbacks. Shortcuts: `Space` cut, `Enter` auto, `F` FTB, `1–9` program,
-`Shift+1–9` preview, `D`/`Shift+D` DSK 1/2.
+sources like SRT loopbacks. Clips and stills are picked with a file browser that lists
+the switcher host's disk. Keyboard shortcuts in the browser: `Space` cut, `Enter` auto,
+`F` FTB, `1–9` program, `Shift+1–9` preview, `D`/`Shift+D` DSK 1/2.
 
 Select the program output resolution and progressive frame rate from the **OUTPUT FORMAT**
 controls above the multiview. The choice is saved immediately to the show file; restart
 8Kloud Switcher when the amber **RESTART TO APPLY** badge appears. The selected format drives
-both OMT and SRT program outputs on the next start.
+both OMT and SRT program outputs on the next start. The **OUTPUTS** tab holds the rest of the
+restart-to-apply settings the same way: the program, clean and multiview OMT senders (enable
+and name, multiview wall size), SDI outputs, the SRT output URL/codec/bitrate, and the
+recording bitrate.
 
 Record the program mix with the red **RECORD** control in the top bar. Recordings
 are HEVC video plus 48 kHz stereo AAC in a finalized Matroska (`.mkv`) file;
@@ -90,7 +104,7 @@ run simultaneously with independent NVENC sessions and backpressure. Headless:
 `--clean-record PATH.mkv`; `--record-bitrate` applies to both. An optional
 clean OMT sender is enabled with `--clean-omt-out "8Kloud Switcher CLEAN"` in
 either executable and can run alongside the normal program sender. Its enabled state
-and name persist in a GUI show file. Design and validation:
+and name persist in the show file, and the OUTPUTS tab toggles it. Design and validation:
 `docs/design-clean-feed.md`.
 
 Local H.264/HEVC clips can occupy any input: open the input source picker and
@@ -145,10 +159,11 @@ where P4 loses 25–40% of the SRT feed. Design and measurements:
 
 ## Build
 
-Requires: gcc 14+/clang, CMake 3.25+, Ninja, `glslc`, the Vulkan loader, Qt 6
-Widgets, and FFmpeg development libraries (`libavcodec`, `libavformat`,
-`libavutil`, `libavfilter`, `libswresample`, `libswscale`) plus the FFmpeg NVIDIA
-codec headers (`ffnvcodec`).
+Requires: gcc 14+/clang, CMake 3.25+, Ninja, `glslc`, the Vulkan loader, and
+FFmpeg development libraries (`libavcodec`, `libavformat`, `libavutil`,
+`libavfilter`, `libswresample`, `libswscale`) plus the FFmpeg NVIDIA codec
+headers (`ffnvcodec`). No GUI toolkit: the console is HTML/JS embedded into the
+binary at build time from `web/`.
 
 **The OMT and DeckLink SDKs are not in this repository** — `third_party/` is
 gitignored, so a fresh clone does not have them and you must fetch them
@@ -168,7 +183,7 @@ On Ubuntu 26.04 (the target platform):
 
 ```sh
 sudo apt install build-essential cmake ninja-build pkgconf glslc \
-    libvulkan-dev qt6-base-dev catch2 avahi-daemon \
+    libvulkan-dev catch2 avahi-daemon \
     libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev \
     libswresample-dev libswscale-dev libffmpeg-nvenc-dev
 ```
@@ -211,9 +226,10 @@ not expose the patched `av1_mpegts_draft` muxer option.
 
 ## Debian package
 
-`debian/` builds a single `8kloud-switcher` package with the GUI, the headless
-engine, both bench tools, and the LGPL FFmpeg and OMT runtime in a private
-libdir (`/usr/lib/*/8kloud-switcher`, reached through each binary's RPATH).
+`debian/` builds a single `8kloud-switcher` package with the console binary (web
+GUI + engine), the headless engine, both bench tools, and the LGPL FFmpeg and OMT
+runtime in a private libdir (`/usr/lib/*/8kloud-switcher`, reached through each
+binary's RPATH).
 
 **Do both prerequisite steps first** — neither is checked by `dpkg-buildpackage`
 beyond the FFmpeg one, and a package built without the SDKs installs cleanly
@@ -265,9 +281,11 @@ sub-allocation advice on any run.
 
 ## Remote control
 
-A TCP control port (GUI default 9923) accepts plain-text commands and
+A TCP control port (console default 9923) accepts plain-text commands and
 pushes JSON state — see `docs/remote-control.md`. A ready-made Bitfocus
-Companion module with tally feedbacks and presets lives in `companion/`.
+Companion module with tally feedbacks and presets lives in `companion/`. The
+web console speaks the same command language over its WebSocket
+(`docs/web-gui.md`), so anything Companion can do, a browser script can too.
 
 ## Layout
 
@@ -275,7 +293,9 @@ Companion module with tally feedbacks and presets lives in `companion/`.
 - `src/engine/` — SwitcherCore: pure program/preview + transition state machine (unit-tested)
 - `src/omt/`, `src/decklink/`, `src/in/` — OMT, SDI and SRT/media/still inputs
 - `src/out/` — OMT program + clean senders, SRT output, file recorder
-- `src/ctl/` — remote-control wire protocol + TCP server
+- `src/ctl/` — remote-control wire protocol, the shared command→engine binding, TCP server
+- `src/web/` — embedded HTTP/WebSocket server, MJPEG multiview stream; `web/` holds the page
+- `src/app/` — the `8kloud-switcher` console: show file (QSettings-compatible INI), session, main
 - `companion/` — Bitfocus Companion module (`npm run package` → installable tgz)
 - `tools/` — kloud-testgen / kloud-latmeter + shared pattern layout (`tools/common/pattern.h`)
 - `docs/` — bench reports; the full v1 plan lives with the project owner
@@ -301,7 +321,6 @@ build matters:
 | Component | License | Note |
 | --- | --- | --- |
 | FFmpeg (via `packaging/build-ffmpeg-lgpl.sh`) | LGPL-2.1+ | **Do not link a distro FFmpeg** — see below |
-| Qt 6 Widgets/Gui/Core | LGPL-3.0 | dynamic linking only |
 | libsrt | MPL-2.0 | |
 | OMT — libomt, libvmx | MIT | |
 | Vulkan loader | Apache-2.0 | |

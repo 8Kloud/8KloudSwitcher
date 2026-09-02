@@ -1,7 +1,8 @@
 # Remote control (TCP + Bitfocus Companion)
 
-8Kloud Switcher listens for remote-control clients on a TCP port: the GUI on
-**9923** by default (`--control-port N` to change, `0` to disable), and
+8Kloud Switcher listens for remote-control clients on a TCP port: the console
+(`8kloud-switcher`) on **9923** by default (`--control-port N` to change, `0` to
+disable), and
 `kloud-headless` only when given `--control-port N` (benches run several
 instances side by side, so headless defaults off). The listener binds
 `0.0.0.0` — the LAN is trusted, same as the media transports. A failed bind (port taken)
@@ -93,6 +94,9 @@ wire now carries a stable name. A client reading the pre-v1.1 integers
 must be updated.
 
 Implementation: parsing/serialization in `src/ctl/ControlProtocol.*`
-(pure, unit-tested), socket loop in `src/ctl/ControlServer.*` (one
-poll thread, applies requests via `Engine::post` — now mutex-serialized
-for its two producers — plus the recording/audio control surfaces).
+(pure, unit-tested), the request → engine binding in `src/ctl/ControlApply.*`
+(shared with the web GUI's WebSocket, so a command means the same thing on
+either transport), socket loop in `src/ctl/ControlServer.*` (one poll thread,
+applies requests via `Engine::post` — mutex-serialized for its producers —
+plus the recording/audio control surfaces). The web GUI (`docs/web-gui.md`)
+accepts these same lines as WebSocket text messages.

@@ -19,6 +19,8 @@ add_library(kloud_core STATIC
   src/engine/SwitcherCore.cpp
   src/audio/MixerCore.cpp
   src/audio/AudioEngine.cpp
+  src/core/Ini.cpp
+  src/core/Json.cpp
   src/ctl/ControlProtocol.cpp
 )
 target_include_directories(kloud_core PUBLIC src)
@@ -178,6 +180,7 @@ endif()
 
 add_library(kloud_engine STATIC
   src/engine/Engine.cpp
+  src/ctl/ControlApply.cpp
   src/ctl/ControlServer.cpp
   src/in/SrtInput.cpp
   src/in/StillInput.cpp
@@ -247,32 +250,43 @@ target_include_directories(kloud-headless PRIVATE tools)
 set_target_properties(kloud-headless PROPERTIES
   BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_install_rpath}")
 
-find_package(Qt6 COMPONENTS Widgets QUIET)
-if(Qt6_FOUND)
-  add_executable(8kloud-switcher
-    src/ui/main.cpp
-    src/ui/MainWindow.cpp
-    src/ui/MainWindow.h
-    src/ui/MultiviewWidget.cpp
-    src/ui/MultiviewWidget.h
-    src/ui/EngineBridge.cpp
-    src/ui/EngineBridge.h
-    src/ui/MixerPanel.cpp
-    src/ui/MixerPanel.h
-    src/ui/ShowFile.cpp
-    src/ui/ShowFile.h
-    src/ui/resources.qrc
-  )
-  set_target_properties(8kloud-switcher PROPERTIES
-    AUTOMOC ON
-    AUTORCC ON
-    BUILD_RPATH "${_kloud_rpath}"
-    INSTALL_RPATH "${_kloud_install_rpath}")
-  target_link_libraries(8kloud-switcher PRIVATE kloud_engine Qt6::Widgets)
-  target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
-else()
-  message(WARNING "Qt6 Widgets not found - GUI app will not be built.")
-endif()
+# -- web GUI: the console page is embedded into the binary so the installed
+# program is self-contained (no web root to locate at runtime).
+set(KLOUD_WEB_HDRS "")
+function(kloud_web_asset name src)
+  set(hdr ${CMAKE_BINARY_DIR}/web/${name}.spv.h)
+  add_custom_command(OUTPUT ${hdr}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/web
+    COMMAND ${CMAKE_COMMAND} -DIN=${CMAKE_SOURCE_DIR}/web/${src} -DOUT=${hdr}
+            -DNAME=${name} -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+    DEPENDS ${CMAKE_SOURCE_DIR}/web/${src} ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+    VERBATIM)
+  list(APPEND KLOUD_WEB_HDRS ${hdr})
+  set(KLOUD_WEB_HDRS ${KLOUD_WEB_HDRS} PARENT_SCOPE)
+endfunction()
+kloud_web_asset(web_index_html index.html)
+kloud_web_asset(web_app_js app.js)
+kloud_web_asset(web_app_css app.css)
+kloud_web_asset(web_logo_svg logo.svg)
+add_custom_target(kloud_web_assets DEPENDS ${KLOUD_WEB_HDRS})
+
+add_library(kloud_web STATIC
+  src/app/ShowFile.cpp
+  src/app/Session.cpp
+  src/web/Http.cpp
+  src/web/MjpegEncoder.cpp
+  src/web/WebServer.cpp
+)
+target_link_libraries(kloud_web PUBLIC kloud_engine)
+target_compile_options(kloud_web PRIVATE -Wall -Wextra)
+add_dependencies(kloud_web kloud_web_assets)
+
+add_executable(8kloud-switcher src/app/main.cpp)
+target_link_libraries(8kloud-switcher PRIVATE kloud_web)
+target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
+set_target_properties(8kloud-switcher PROPERTIES
+  BUILD_RPATH "${_kloud_rpath}"
+  INSTALL_RPATH "${_kloud_install_rpath}")
 
 option(KLOUD_BUILD_TESTS "Build unit tests" ON)
 if(KLOUD_BUILD_TESTS)
@@ -304,57 +318,32 @@ if(KLOUD_BUILD_TESTS)
     tests/control_protocol_test.cpp
     tests/decklink_ref_test.cpp
     tests/media_playlist_test.cpp
+    tests/ini_test.cpp
+    tests/json_test.cpp
+    tests/http_test.cpp
+    tests/showfile_test.cpp
+    tests/web_server_test.cpp
     tests/gpu_composite_test.cpp
     tests/interop_test.cpp
     tests/nvenc_direct_test.cpp
     tests/video_encoder_test.cpp
   )
-  target_link_libraries(kloud_tests PRIVATE kloud_core kloud_gpu kloud_media Catch2::Catch2WithMain)
+  target_link_libraries(kloud_tests PRIVATE kloud_web Catch2::Catch2WithMain)
   target_include_directories(kloud_tests PRIVATE tools)
+  target_compile_definitions(kloud_tests PRIVATE
+    KLOUD_TEST_FIXTURES="${CMAKE_SOURCE_DIR}/tests/fixtures")
+  set_target_properties(kloud_tests PROPERTIES BUILD_RPATH "${_kloud_rpath}")
 
   include(Catch)
   catch_discover_tests(kloud_tests)
 
-  if(TARGET 8kloud-switcher)
-    add_executable(kloud_ui_tests
-      tests/ui_output_format_test.cpp
-      tests/ui_input_picker_test.cpp
-      src/ui/MainWindow.cpp
-      src/ui/MainWindow.h
-      src/ui/MultiviewWidget.cpp
-      src/ui/MultiviewWidget.h
-      src/ui/EngineBridge.cpp
-      src/ui/EngineBridge.h
-      src/ui/MixerPanel.cpp
-      src/ui/MixerPanel.h
-      src/ui/ShowFile.cpp
-      src/ui/ShowFile.h
-    )
-    set_target_properties(kloud_ui_tests PROPERTIES
-      AUTOMOC ON
-      BUILD_RPATH "${_kloud_rpath}"
-      INSTALL_RPATH "${_kloud_rpath}")
-    target_link_libraries(kloud_ui_tests PRIVATE
-      kloud_engine Qt6::Widgets Catch2::Catch2WithMain)
-    target_compile_options(kloud_ui_tests PRIVATE -Wall -Wextra)
-    catch_discover_tests(kloud_ui_tests
-      TEST_PREFIX "ui: "
-      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-  endif()
 endif()
 
 # ---------------------------------------------------------------------------
 # Install rules (used by the Debian package; see debian/)
 # ---------------------------------------------------------------------------
-install(TARGETS kloud-headless RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-if(TARGET 8kloud-switcher)
-  install(TARGETS 8kloud-switcher RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-  install(FILES ${CMAKE_SOURCE_DIR}/src/ui/assets/cow-switcher-logo.svg
-          DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
-          RENAME 8kloud-switcher.svg)
-  install(FILES ${CMAKE_SOURCE_DIR}/packaging/8kloud-switcher.desktop
-          DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-endif()
+install(TARGETS kloud-headless 8kloud-switcher
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(OMT_FOUND)
   foreach(tool kloud-testgen kloud-latmeter)
     install(TARGETS ${tool} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

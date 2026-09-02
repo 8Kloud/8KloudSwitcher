@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>8Kloud Switcher · Live Production</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="topbar">
+  <img class="brand-icon" src="/logo.svg" alt="" width="44" height="44">
+  <div class="brand">
+    <div class="brand-mark">8KLOUD//SWITCHER</div>
+    <div class="brand-caption">LIVE PRODUCTION SYSTEM</div>
+  </div>
+  <div class="spacer"></div>
+  <div id="pgmReadout" class="bus-readout program">PGM 00 —</div>
+  <div id="pvwReadout" class="bus-readout preview">PVW 00 —</div>
+  <div class="record-deck program">
+    <button id="recBtn" class="record-button" title="Record the program mix as HEVC/AAC Matroska">●&nbsp; RECORD</button>
+    <span id="recState" class="record-state" data-state="idle">IDLE</span>
+  </div>
+  <div class="record-deck clean">
+    <button id="cleanBtn" class="record-button" title="Record the switched program without downstream key graphics">●&nbsp; CLEAN</button>
+    <span id="cleanState" class="record-state" data-state="idle">IDLE</span>
+  </div>
+  <div id="healthBadge" class="badge" data-state="good">●&nbsp; ENGINE ONLINE</div>
+  <div id="linkBadge" class="badge" data-state="bad">●&nbsp; CONNECTING</div>
+  <div id="clock" class="clock">--:--:--</div>
+</header>
+<div id="banner" class="alert-banner" hidden></div>
+
+<main class="workspace">
+  <section class="monitor-panel">
+    <div class="monitor-head">
+      <span class="section-title">MULTIVIEW&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">CLICK PREVIEW&nbsp; / &nbsp;RIGHT-CLICK PROGRAM</span></span>
+      <span class="spacer"></span>
+      <div class="output-deck">
+        <span class="eyebrow">OUTPUT FORMAT</span>
+        <select id="outRes" title="Program output resolution (restart required to apply)"></select>
+        <select id="outFps" title="Progressive program output frame rate (restart required to apply)"></select>
+        <span id="fmtState" class="format-state" data-state="active">ACTIVE</span>
+      </div>
+      <div class="output-deck">
+        <span class="eyebrow">MONITORS</span>
+        <select id="mvLayout" title="How PROGRAM and PREVIEW sit next to the input matrix (this browser only)">
+          <option value="stacked">PGM over PVW</option>
+          <option value="side">PGM beside PVW</option>
+          <option value="wall">Wall as sent</option>
+        </select>
+      </div>
+    </div>
+    <div class="monitor-stage">
+      <canvas id="mv" width="1280" height="720"></canvas>
+      <div id="mvWaiting" class="mv-waiting">
+        <div class="mv-waiting-title">WAITING FOR MULTIVIEW</div>
+        <div class="mv-waiting-detail">Video surfaces will appear when the engine publishes a frame</div>
+      </div>
+    </div>
+  </section>
+
+  <div id="splitter" class="splitter" title="Drag to resize the monitor"></div>
+  <section class="control-surface" id="deck">
+    <div class="workspace-tabs">
+      <nav class="tab-bar">
+        <button class="tab-button active" data-tab="switcher">SWITCHER</button>
+        <button class="tab-button" data-tab="inputs">INPUTS</button>
+        <button class="tab-button" data-tab="audio" id="audioTabButton">AUDIO MIXER</button>
+        <button class="tab-button" data-tab="media">MEDIA</button>
+        <button class="tab-button" data-tab="outputs">OUTPUTS</button>
+      </nav>
+      <div class="tab-pane active module red" id="tab-switcher">
+        <div class="module-head">
+          <span class="section-title">M/E 1&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">SOURCE BUSES</span></span>
+          <span class="spacer"></span>
+          <span class="section-hint">SPACE&nbsp; CUT&nbsp;&nbsp;&nbsp;&nbsp; ENTER&nbsp; AUTO</span>
+        </div>
+        <div class="bus-canvas">
+          <div class="bus-row"><div class="bus-tag program">PROGRAM<br>ON AIR</div><div class="bus-keys" id="pgmKeys"></div></div>
+          <div class="bus-row"><div class="bus-tag preview">PREVIEW<br>NEXT</div><div class="bus-keys" id="pvwKeys"></div></div>
+        </div>
+      </div>
+      <div class="tab-pane" id="tab-inputs">
+        <div class="module-head">
+          <span class="section-title">INPUT SOURCES&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">PATCH OMT / SDI / SRT · UNASSIGNED INPUTS ARE BLACK</span></span>
+          <span class="spacer"></span>
+          <span class="section-hint">CLICK A NAME FOR MEDIA, STILLS &amp; FRAME SYNC</span>
+        </div>
+        <div class="picker-grid" id="inputGrid"></div>
+      </div>
+      <div class="tab-pane" id="tab-audio">
+        <div class="module-head">
+          <span class="section-title">AUDIO MIXER&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">INPUTS&nbsp; / &nbsp;MASTER</span></span>
+          <span class="spacer"></span>
+          <span class="section-hint">CLICK A SOURCE NAME TO PATCH INPUT OR SET FRAME SYNC</span>
+        </div>
+        <div class="strip-canvas" id="strips"></div>
+      </div>
+      <div class="tab-pane" id="tab-media">
+        <div class="module-head">
+          <span class="section-title">MEDIA PLAYERS&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">LOCAL H.264 / HEVC PLAYLISTS PATCHED AS INPUTS</span></span>
+        </div>
+        <div class="media-rows" id="mediaRows"></div>
+      </div>
+      <div class="tab-pane" id="tab-outputs">
+        <div class="module-head">
+          <span class="section-title">OUTPUTS &amp; SHOW SETTINGS&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">SAVED TO THE SHOW FILE · RESTART TO APPLY</span></span>
+          <span class="spacer"></span>
+          <span id="settingsState" class="format-state" data-state="active">ACTIVE</span>
+        </div>
+        <div class="settings-grid" id="settings">
+          <div class="keyer-card">
+            <div class="keyer-title">OMT PROGRAM</div>
+            <label class="check"><input type="checkbox" data-setting="omtOut"> SEND</label>
+            <input type="text" data-setting="omtOutName" placeholder="Sender name">
+            <div class="live-note" id="liveOmtOut"></div>
+          </div>
+          <div class="keyer-card">
+            <div class="keyer-title">OMT CLEAN FEED</div>
+            <label class="check"><input type="checkbox" data-setting="cleanOmtOut"> SEND</label>
+            <input type="text" data-setting="cleanOmtOutName" placeholder="Sender name">
+            <div class="live-note" id="liveCleanOmtOut"></div>
+          </div>
+          <div class="keyer-card">
+            <div class="keyer-title">OMT MULTIVIEW</div>
+            <label class="check"><input type="checkbox" data-setting="mvOmtOut"> SEND</label>
+            <input type="text" data-setting="mvOmtOutName" placeholder="Sender name">
+            <div class="row">
+              <span class="eyebrow">WALL</span>
+              <select data-setting="mvSize"></select>
+            </div>
+            <div class="live-note" id="liveMvOmtOut"></div>
+          </div>
+          <div class="keyer-card">
+            <div class="keyer-title">SDI OUTPUTS</div>
+            <div class="row"><span class="eyebrow">PROGRAM</span><input type="text" data-setting="sdiOut" placeholder="decklink://0 (empty = off)"></div>
+            <div class="row"><span class="eyebrow">CLEAN</span><input type="text" data-setting="cleanSdiOut" placeholder="decklink://1 (empty = off)"></div>
+            <div class="live-note" id="liveSdiOut"></div>
+          </div>
+          <div class="keyer-card">
+            <div class="keyer-title">SRT OUTPUT</div>
+            <input type="text" data-setting="srtOut" placeholder="srt://:9710?mode=listener&latency=120000 (empty = off)">
+            <div class="row">
+              <span class="eyebrow">CODEC</span>
+              <select data-setting="srtCodec"><option value="hevc">HEVC</option><option value="av1">AV1</option></select>
+              <span class="eyebrow">KBPS</span>
+              <input type="number" data-setting="srtBitrateKbps" min="0" max="400000" step="500" placeholder="auto">
+            </div>
+            <div class="live-note" id="liveSrt"></div>
+          </div>
+          <div class="keyer-card">
+            <div class="keyer-title">RECORDING</div>
+            <div class="row">
+              <span class="eyebrow">KBPS</span>
+              <input type="number" data-setting="recordBitrateKbps" min="0" max="400000" step="500" placeholder="auto">
+            </div>
+            <div class="live-note" id="liveRecord"></div>
+          </div>
+          <div class="keyer-card wide">
+            <div class="keyer-title">SHOW FILE</div>
+            <div class="live-note mono" id="showPath"></div>
+            <div class="live-note">Remote control: TCP port 9923 (Companion) · Web GUI: this page. LAN-trusted, no authentication.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="module blue transition">
+      <div class="transition-controls">
+        <div class="section-title">TRANSITION&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">M/E 1</span></div>
+        <div class="row">
+          <select id="transType" title="Transition style">
+            <option value="0">Mix</option><option value="1">Wipe L → R</option><option value="2">Wipe R → L</option>
+            <option value="3">Wipe T → B</option><option value="4">Wipe B → T</option><option value="5">Box</option><option value="6">Circle</option>
+          </select>
+          <input id="transDur" type="number" min="1" max="600" value="30" title="Transition duration in output frames"><span class="unit">fr</span>
+        </div>
+        <div class="row">
+          <button id="cutBtn" class="action-button cut">CUT</button>
+          <button id="autoBtn" class="action-button auto">AUTO</button>
+        </div>
+        <button id="ftbBtn" class="action-button ftb">FADE TO BLACK</button>
+      </div>
+      <div class="tbar-col">
+        <span class="eyebrow">T-BAR</span>
+        <input id="tbar" type="range" min="0" max="1000" value="0" class="tbar" title="Drag for a manual transition">
+      </div>
+    </aside>
+
+    <aside class="module green keyers">
+      <div class="section-title">DOWNSTREAM KEYS&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;<span class="hint">OVERLAYS</span></div>
+      <div class="keyer-cards" id="keyerCards"></div>
+    </aside>
+  </section>
+</main>
+<footer id="status" class="status-line"></footer>
+
+<dialog id="pickerDialog" class="dialog">
+  <form method="dialog" class="dialog-body">
+    <div class="section-title" id="pickerTitle">INPUT 01 SOURCE</div>
+    <div class="section-hint">Choose a source, enter a URL, build a video playlist, or load a still image.</div>
+    <select id="pickerList" size="7" class="list"></select>
+    <div class="row">
+      <input id="pickerManual" type="text" placeholder="srt://host:9710?mode=caller&latency=120000  ·  OMT name  ·  decklink://0  ·  /path/to/still.png">
+      <button type="button" class="action-button" id="pickerRefresh">REFRESH</button>
+      <button type="button" class="action-button" id="pickerAddClips">ADD CLIPS</button>
+      <button type="button" class="action-button" id="pickerAddStill">ADD STILL</button>
+    </div>
+    <div class="eyebrow">VIDEO PLAYLIST&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;clips advance top-to-bottom</div>
+    <select id="pickerPlaylist" size="4" class="list"></select>
+    <div class="row">
+      <span class="eyebrow">TRIM</span>
+      <span>IN</span><input id="trimIn" type="number" min="0" max="86400000" step="1" title="Inclusive in point, ms from source start"><span class="unit">ms</span>
+      <span>OUT</span><input id="trimOut" type="number" min="0" max="86400000" step="1" title="Exclusive out point; 0 = END"><span class="unit">ms</span>
+      <span>SPEED</span><input id="trimSpeed" type="number" min="25" max="400" step="1" value="100" title="Playback speed; audio tempo follows without changing pitch"><span class="unit">%</span>
+    </div>
+    <div class="row">
+      <button type="button" class="action-button" id="plRemove">REMOVE</button>
+      <button type="button" class="action-button" id="plUp">MOVE UP</button>
+      <button type="button" class="action-button" id="plDown">MOVE DOWN</button>
+      <span class="spacer"></span>
+      <span class="eyebrow">FRAME SYNC</span>
+      <select id="pickerSync" title="Re-time this input onto the output tick grid and auto-align its audio">
+        <option value="-1">Off</option><option value="0">Trim only · no delay</option>
+        <option value="1">1 frame</option><option value="2">2 frames</option><option value="3">3 frames</option><option value="4">4 frames</option>
+      </select>
+    </div>
+    <div class="row right">
+      <button type="button" class="action-button" id="pickerBlack">SET BLACK</button>
+      <span class="spacer"></span>
+      <button type="button" class="action-button" id="pickerCancel">CANCEL</button>
+      <button type="submit" class="action-button primary" id="pickerOk">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="fileDialog" class="dialog">
+  <form method="dialog" class="dialog-body">
+    <div class="section-title" id="fileTitle">ADD VIDEO CLIPS</div>
+    <div class="row">
+      <button type="button" class="action-button" id="fileUp">▲ UP</button>
+      <input id="filePath" type="text" placeholder="/path">
+      <button type="button" class="action-button" id="fileGo">GO</button>
+    </div>
+    <div class="file-columns">
+      <select id="fileDirs" size="12" class="list"></select>
+      <select id="fileFiles" size="12" class="list" multiple></select>
+    </div>
+    <div class="row right">
+      <span class="section-hint" id="fileHint"></span>
+      <span class="spacer"></span>
+      <button type="button" class="action-button" id="fileCancel">CANCEL</button>
+      <button type="submit" class="action-button primary" id="fileOk">ADD</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="recordDialog" class="dialog">
+  <form method="dialog" class="dialog-body">
+    <div class="section-title" id="recordTitle">RECORD PROGRAM</div>
+    <div class="section-hint">Matroska (.mkv), HEVC video + 48 kHz stereo AAC. The path is on the switcher host.</div>
+    <input id="recordPath" type="text">
+    <div class="row right">
+      <button type="button" class="action-button" id="recordCancel">CANCEL</button>
+      <button type="submit" class="action-button primary record">● START</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

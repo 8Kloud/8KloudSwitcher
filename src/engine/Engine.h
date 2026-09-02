@@ -83,6 +83,7 @@ public:
 
     bool start(const EngineConfig& cfg);
     void stop();
+    bool running() const { return started_.load(std::memory_order_acquire); }
 
     // Serialized: the command ring is SPSC and both the GUI thread and the
     // remote-control server post (control rate, contention negligible).
@@ -140,6 +141,7 @@ public:
         int transType = 0;  // TransitionType as int
         int transDur = 30;  // ticks
         float transSoftness = 0.02f;
+        int dskDur[kDskCount] = {30, 30};  // keyer fade ticks
     };
     UiState uiState() const {
         std::lock_guard lk(uiM_);

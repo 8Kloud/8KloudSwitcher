@@ -14,15 +14,13 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cerrno>
-#include <cstdlib>
 #include <cstring>
-#include <ctime>
 
 #include "core/Log.h"
+#include "ctl/ControlApply.h"
 #include "engine/Engine.h"
 
 namespace kloud::ctl {
@@ -93,233 +91,18 @@ void ControlServer::sendError(Client& c, const std::string& msg) {
     send(c, "{\"event\":\"error\",\"message\":\"" + jsonEscape(msg) + "\"}");
 }
 
-std::string ControlServer::defaultRecordPath(bool clean) const {
-    const char* home = getenv("HOME");
-    std::string dir = home ? home : ".";
-    struct stat st{};
-    if (const std::string videos = dir + "/Videos";
-        stat(videos.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
-        dir = videos;
-    char ts[32];
-    const time_t now = time(nullptr);
-    tm local{};
-    localtime_r(&now, &local);
-    strftime(ts, sizeof ts, "%Y%m%d-%H%M%S", &local);
-    return dir + (clean ? "/8Kloud Switcher-Clean-" : "/8Kloud Switcher-") + ts +
-           ".mkv";
-}
-
-Snapshot ControlServer::snapshot() const {
-    Snapshot s;
-    const auto ui = engine_.uiState();
-    s.program = ui.program;
-    s.preview = ui.preview;
-    const auto fmt = engine_.outputFormat();
-    if (fmt.fpsD > 0) s.fps = double(fmt.fpsN) / double(fmt.fpsD);
-    s.inTransition = ui.inTransition;
-    s.ftb = ui.ftbEngaged;
-    s.ftbLevel = ui.ftbLevel;
-    s.transitionType = ui.transType;
-    s.dsk.resize(kDskCount);
-    for (int k = 0; k < kDskCount; ++k)
-        s.dsk[size_t(k)] = {ui.dskOn[k], ui.dskLevel[k], ui.dskSrc[k],
-                            ui.dskTie[k], ui.dskAudioFollow[k]};
-    auto rec = [](const Engine::RecordingState& r) {
-        return RecordControlState{r.active, r.pending, r.error, r.frames,
-                                  r.path};
-    };
-    s.record = rec(engine_.recordingState());
-    s.cleanRecord = rec(engine_.cleanRecordingState());
-
-    s.omtOut = {engine_.omtOutRequested(), engine_.omtOutActive(),
-                engine_.omtOutName(), engine_.omtOutFrames()};
-    s.cleanOmtOut = {engine_.cleanOmtOutRequested(),
-                     engine_.cleanOmtOutActive(), engine_.cleanOmtOutName(),
-                     engine_.cleanOmtOutFrames()};
-    s.mvOmtOut = {engine_.mvOmtOutRequested(), engine_.mvOmtOutActive(),
-                  engine_.mvOmtOutName(), engine_.mvOmtOutFrames()};
-    s.sdiOut = {!engine_.sdiOutRef().empty(), engine_.sdiOutOk(),
-                engine_.sdiOutRef(), engine_.sdiOutFrames()};
-    s.cleanSdiOut = {!engine_.cleanSdiOutRef().empty(),
-                     engine_.cleanSdiOutOk(), engine_.cleanSdiOutRef(),
-                     engine_.cleanSdiOutFrames()};
-
-    s.srtConfigured = engine_.srtConfigured();
-    s.srtConnected = engine_.srtConnected();
-    auto* aud = engine_.audio();
-    s.audioAvailable = aud != nullptr;
-    s.inputs.resize(size_t(engine_.inputCount()));
-    for (int i = 0; i < engine_.inputCount(); ++i) {
-        auto& in = s.inputs[size_t(i)];
-        in.ref = engine_.inputRef(i);
-        in.type = inputTypeName(engine_.inputType(i));
-        in.connected = engine_.inputStatus(i).connected;
-        const auto m = engine_.inputMediaState(i);
-        in.media = {m.available,     m.playing,       m.loop,
-                    m.atEnd,         m.playlistIndex, m.playlistSize};
-        if (aud && i < aud->inputCount()) {
-            const auto& ch = aud->channel(i);
-            in.audioMute = ch.mute.load(std::memory_order_relaxed);
-            in.audioSolo = ch.solo.load(std::memory_order_relaxed);
-            in.audioGain = ch.gain.load(std::memory_order_relaxed);
-        }
-    }
-    return s;
-}
-
 void ControlServer::apply(const Request& r, Client& c) {
-    using Op = Request::Op;
-    const int nIn = engine_.inputCount();
-    auto checkInput = [&](int idx) {
-        if (idx >= 0 && idx < nIn) return true;
-        sendError(c, "input " + std::to_string(idx + 1) + " out of range (1.." +
-                         std::to_string(nIn) + ")");
-        return false;
-    };
-    auto checkDsk = [&](int k) {
-        if (k >= 0 && k < kDskCount) return true;
-        sendError(c, "dsk " + std::to_string(k + 1) + " out of range (1.." +
-                         std::to_string(kDskCount) + ")");
-        return false;
-    };
-
     switch (r.op) {
-        case Op::Cut: engine_.post({Command::Type::Cut, 0, 0, 0.f}); break;
-        case Op::Auto: engine_.post({Command::Type::Auto, 0, 0, 0.f}); break;
-        case Op::Ftb:
-            engine_.post({Command::Type::FadeToBlack, 0, 0, 0.f});
-            break;
-        case Op::SetProgram:
-            if (checkInput(r.a))
-                engine_.post({Command::Type::SetProgram, r.a, 0, 0.f});
-            break;
-        case Op::SetPreview:
-            if (checkInput(r.a))
-                engine_.post({Command::Type::SetPreview, r.a, 0, 0.f});
-            break;
-        case Op::SetTransition: {
-            // 0 duration / negative softness = keep the current values.
-            const auto ui = engine_.uiState();
-            engine_.post({Command::Type::SetTransition, r.a,
-                          r.b > 0 ? r.b : ui.transDur,
-                          r.f >= 0.f ? r.f : ui.transSoftness});
-            break;
-        }
-        case Op::TbarBegin:
-            engine_.post({Command::Type::TbarBegin, 0, 0, 0.f});
-            break;
-        case Op::TbarSet:
-            engine_.post({Command::Type::TbarSet, 0, 0, r.f});
-            break;
-        case Op::TbarEnd:
-            engine_.post({Command::Type::TbarEnd, 0, 0, 0.f});
-            break;
-        case Op::DskSet: {
-            if (!checkDsk(r.a)) break;
-            // The engine only has toggle; reach the requested end state by
-            // toggling conditionally on the mirrored target.
-            const bool on = engine_.uiState().dskOn[r.a];
-            if (r.b == 2 || (r.b == 1) != on)
-                engine_.post({Command::Type::DskToggle, r.a, 0, 0.f});
-            break;
-        }
-        case Op::SetDskSource:
-            if (checkDsk(r.a) && checkInput(r.b))
-                engine_.post({Command::Type::SetDskSource, r.a, r.b, 0.f});
-            break;
-        case Op::SetDskFade:
-            if (checkDsk(r.a))
-                engine_.post({Command::Type::SetDskFade, r.a, r.b, 0.f});
-            break;
-        case Op::DskTie: {
-            if (!checkDsk(r.a)) break;
-            const bool on = r.b == 2 ? !engine_.uiState().dskTie[r.a]
-                                     : r.b == 1;
-            engine_.post({Command::Type::SetDskTie, r.a, on ? 1 : 0, 0.f});
-            break;
-        }
-        case Op::DskAudioFollow: {
-            if (!checkDsk(r.a)) break;
-            const bool on = r.b == 2
-                                ? !engine_.uiState().dskAudioFollow[r.a]
-                                : r.b == 1;
-            engine_.post(
-                {Command::Type::SetDskAudioFollow, r.a, on ? 1 : 0, 0.f});
-            break;
-        }
-        case Op::MediaPlay:
-        case Op::MediaPause:
-            if (checkInput(r.a))
-                engine_.post({Command::Type::MediaSetPlaying, r.a,
-                              r.op == Op::MediaPlay ? 1 : 0, 0.f});
-            break;
-        case Op::MediaRestart:
-            if (checkInput(r.a))
-                engine_.post({Command::Type::MediaRestart, r.a, 0, 0.f});
-            break;
-        case Op::MediaStep:
-            if (checkInput(r.a))
-                engine_.post({Command::Type::MediaStep, r.a, r.b, 0.f});
-            break;
-        case Op::MediaLoop:
-            if (checkInput(r.a))
-                engine_.post({Command::Type::MediaSetLoop, r.a, r.b, 0.f});
-            break;
-        case Op::RecordStart:
-        case Op::CleanRecordStart:
-        case Op::RecordToggle:
-        case Op::CleanRecordToggle: {
-            const bool clean =
-                r.op == Op::CleanRecordStart || r.op == Op::CleanRecordToggle;
-            const auto state = clean ? engine_.cleanRecordingState()
-                                     : engine_.recordingState();
-            const bool running = state.active || state.pending;
-            const bool toggle =
-                r.op == Op::RecordToggle || r.op == Op::CleanRecordToggle;
-            if (running) {
-                if (!toggle) {
-                    sendError(c, clean ? "clean record already running"
-                                       : "record already running");
-                    break;
-                }
-                clean ? engine_.requestCleanRecording({})
-                      : engine_.requestRecording({});
-                break;
-            }
-            const std::string path =
-                r.s.empty() ? defaultRecordPath(clean) : r.s;
-            clean ? engine_.requestCleanRecording(path)
-                  : engine_.requestRecording(path);
-            break;
-        }
-        case Op::RecordStop: engine_.requestRecording({}); break;
-        case Op::CleanRecordStop: engine_.requestCleanRecording({}); break;
-        case Op::AudioMute:
-        case Op::AudioSolo:
-        case Op::AudioGain: {
-            auto* aud = engine_.audio();
-            if (!aud) {
-                sendError(c, "audio is disabled");
-                break;
-            }
-            if (!checkInput(r.a) || r.a >= aud->inputCount()) break;
-            auto& ch = aud->channel(r.a);
-            if (r.op == Op::AudioGain) {
-                ch.gain.store(r.f);
-            } else {
-                auto& flag = r.op == Op::AudioMute ? ch.mute : ch.solo;
-                flag.store(r.b == 2 ? !flag.load() : r.b == 1);
-            }
-            break;
-        }
-        case Op::Subscribe:
+        case Request::Op::Subscribe:
             c.subscribed = true;
-            send(c, lastState_.empty() ? toJson(snapshot()) : lastState_);
-            break;
-        case Op::Unsubscribe: c.subscribed = false; break;
-        case Op::GetState: send(c, toJson(snapshot())); break;
-        case Op::Ping: send(c, "{\"event\":\"pong\"}"); break;
+            send(c, lastState_.empty() ? toJson(snapshot(engine_)) : lastState_);
+            return;
+        case Request::Op::Unsubscribe: c.subscribed = false; return;
+        default: break;
     }
+    const ApplyResult res = ctl::apply(engine_, r);
+    if (!res.ok) sendError(c, res.error);
+    if (!res.reply.empty()) send(c, res.reply);
 }
 
 void ControlServer::run(std::stop_token st) {
@@ -400,7 +183,7 @@ void ControlServer::run(std::stop_token st) {
         }
 
         // State publish on change.
-        const std::string state = toJson(snapshot());
+        const std::string state = toJson(snapshot(engine_));
         const bool changed = state != lastState_;
         if (changed) lastState_ = state;
         for (auto& c : clients_) {

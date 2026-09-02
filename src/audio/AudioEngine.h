@@ -115,6 +115,7 @@ public:
     ~AudioEngine();
 
     InputChannel& channel(int i) { return *channels_[size_t(i)]; }
+    const InputChannel& channel(int i) const { return *channels_[size_t(i)]; }
     int inputCount() const { return int(channels_.size()); }
 
     void addSink(PcmSink s);  // before start()

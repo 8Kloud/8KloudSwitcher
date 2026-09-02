@@ -21,8 +21,9 @@ namespace kloud::ctl {
 // TCP remote-control listener (docs/remote-control.md): accepts line
 // commands, applies them to the engine, and pushes one-line JSON state
 // events to subscribed clients whenever the state changes (~33 Hz poll).
-// Single poll()-driven thread owns all sockets. Qt-free; used by both the
-// GUI and kloud-headless. A failed bind logs and leaves the server inert --
+// Single poll()-driven thread owns all sockets; the request -> engine
+// binding lives in ctl/ControlApply so the web GUI shares it. Used by both
+// the GUI and kloud-headless. A failed bind logs and leaves the server inert --
 // remote control must never take the show down.
 //
 // Lifetime: the poll thread snapshots engine state every iteration, so the
@@ -45,10 +46,8 @@ private:
 
     void run(std::stop_token st);
     void apply(const Request& r, Client& c);
-    Snapshot snapshot() const;
     void send(Client& c, const std::string& line);  // appends '\n'
     void sendError(Client& c, const std::string& msg);
-    std::string defaultRecordPath(bool clean) const;
 
     Engine& engine_;
     int port_ = 0;
