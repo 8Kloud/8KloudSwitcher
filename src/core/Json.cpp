@@ -383,7 +383,8 @@ std::string Value::dump() const {
 }
 
 bool parse(std::string_view text, Value& out, std::string& err) {
-    Parser p{text};
+    Parser p;
+    p.s = text;
     err.clear();
     if (!p.value(out, 0)) {
         err = p.err;

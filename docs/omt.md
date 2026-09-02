@@ -86,3 +86,28 @@ See `docs/bench-omt.md` for the 1080p/8K measurements, CPU costs, and the
 10 MB-per-compressed-frame transport envelope (`OMTConstants.VIDEO_MAX_SIZE`
 — oversize frames are counted drops at the sender, not a stall; patchable
 in our vendored build if 8K noise content ever matters).
+
+## libomt-c
+
+The switcher also builds against [libomt-c](https://github.com/8Kloud/libomt-c),
+the native C implementation of the same C API: lay it out as
+`third_party/omt/{include/libomt.h,lib/libomt.so,lib/libvmx.so}` exactly like
+the stock SDK (or point `-DOMT_SDK_DIR` at such a directory). No source changes
+are needed; senders and receivers interoperate with the stock library in both
+directions. Measured on the same host (testgen -> latmeter loopback, same
+`libvmx.so`), CPU and latency are identical within run-to-run noise at 1080p,
+4K and 8K because the VMX codec dominates; libomt-c's receiver uses 25-100 MB
+less memory per process and the library is 160 KB instead of 8.6 MB.
+
+One thing libomt-c does that the stock library cannot: a **pre-built decoder
+pool**. Creating a VMX decoder instance is the one expensive step on a new
+connection (the codec clears its planes: ~5 ms at 1080p, ~70 ms at 8K), and
+the stock library does it inside the first received frame, which shows on
+every connection as a first-frame latency spike and a dropped frame or two
+(8K: 80 ms max, 2 gaps, measured). When CMake reports `OMT decoder prewarm:
+available`, `Engine::start` pre-builds decoders for the show format before
+Vulkan initialises (one per assigned OMT input, at most four) and every OMT
+input asks its receiver to prepare its decoder while the connection comes up;
+a re-patched input's decoder returns to the pool. Result at 8K: 10 ms max and
+no gaps on the first second. Wrong guesses (an input carrying a different
+format than the show) cost nothing but the idle decoder's memory.

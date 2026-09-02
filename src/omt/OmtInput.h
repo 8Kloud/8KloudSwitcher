@@ -30,8 +30,12 @@ class OmtInput : public IInputSource {
 public:
     // syncFrames >= 0 enables the frame-sync feed (and sizes the upload
     // ring for that many queued frames); -1 = plain latest-frame input.
+    // `expected` is the format this input will most likely carry (the show
+    // format): with libomt-c it lets the receiver build its VMX decoder while
+    // the connection comes up instead of on the first frame. A wrong guess
+    // is harmless. Invalid = no hint.
     OmtInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue, std::string ref,
-             int index, int syncFrames = -1);
+             int index, int syncFrames = -1, VideoFormatDesc expected = {});
     ~OmtInput() override;
 
     std::optional<Mailbox::Item> newer(uint64_t lastSeq) const override {
@@ -61,6 +65,7 @@ private:
     gpu::VkEngine& eng_;
     gpu::Queue& queue_;
     std::string ref_;
+    VideoFormatDesc expected_;
     int index_;
 
     omt_receive_t* recv_ = nullptr;  // capture-thread owned after ctor

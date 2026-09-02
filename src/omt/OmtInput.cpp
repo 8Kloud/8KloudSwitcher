@@ -19,10 +19,11 @@
 namespace kloud {
 
 OmtInput::OmtInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue, std::string ref,
-                   int index, int syncFrames)
+                   int index, int syncFrames, VideoFormatDesc expected)
     : eng_(eng),
       queue_(uploadQueue),
       ref_(std::move(ref)),
+      expected_(expected),
       index_(index),
       syncFrames_(syncFrames) {
     thread_ = std::jthread([this](std::stop_token st) { run(st); });
@@ -95,6 +96,13 @@ void OmtInput::run(std::stop_token st) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
             }
+#ifdef KLOUD_HAVE_OMT_PREWARM
+            // Decoder build off the first frame (docs/omt.md, "libomt-c").
+            if (expected_.valid() && expected_.fpsD > 0)
+                omt_receive_prepare_video(
+                    recv_, expected_.width, expected_.height,
+                    int(expected_.fpsN / expected_.fpsD), OMTColorSpace_Undefined);
+#endif
             lastVideoNs = MediaClock::nowNs();
             if (everConnected) reconnCtr.add();
             appliedTally_ = 0xFF;  // re-send tally on the new connection

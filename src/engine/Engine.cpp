@@ -239,6 +239,24 @@ bool Engine::start(const EngineConfig& cfg) {
                  cfg_.mvH);
         return false;
     }
+#ifdef KLOUD_HAVE_OMT_PREWARM
+    {
+        // libomt-c: build VMX decoders for the show format now, so they are
+        // ready by the time discovery resolves the inputs -- Vulkan init alone
+        // takes longer than the 8K decoder build. Receivers take one from the
+        // pool and return it on re-patch. Sized to the assigned OMT inputs
+        // (pool max 4; at least one so pooling is on for later patches).
+        int omtInputs = 0;
+        for (const auto& s : cfg_.inputs)
+            if (s.type == InputSpec::Type::Omt && !s.ref.empty()) ++omtInputs;
+        const int count = std::clamp(omtInputs, 1, 4);
+        omt_video_decoder_prewarm(cfg_.show.width, cfg_.show.height,
+                                  int(cfg_.show.fpsN / cfg_.show.fpsD),
+                                  OMTColorSpace_Undefined, count);
+        KLOUD_LOGI("omt: prewarming %d decoder%s for %dx%d", count,
+                 count == 1 ? "" : "s", cfg_.show.width, cfg_.show.height);
+    }
+#endif
     if (!vk_.init(cfg.validation)) return false;
 
     comp_ = std::make_unique<gpu::Compositor>(vk_, cfg_.show, cfg_.mvW, cfg_.mvH,
@@ -339,7 +357,7 @@ bool Engine::start(const EngineConfig& cfg) {
 #ifdef KLOUD_HAVE_OMT
         else if (spec.type == InputSpec::Type::Omt)
             inputs_.push_back(std::make_unique<OmtInput>(
-                vk_, q, spec.ref, int(i), spec.syncFrames));
+                vk_, q, spec.ref, int(i), spec.syncFrames, cfg_.show));
 #endif
         else {
             KLOUD_LOGE("in%d: transport for '%s' was not built in; input will "
@@ -787,7 +805,7 @@ void Engine::renderLoop(std::stop_token st) {
 #ifdef KLOUD_HAVE_OMT
                 else if (spec.type == InputSpec::Type::Omt)
                     inputs_[size_t(idx)] = std::make_unique<OmtInput>(
-                        vk_, q, spec.ref, idx, spec.syncFrames);
+                        vk_, q, spec.ref, idx, spec.syncFrames, cfg_.show);
 #endif
 #ifdef KLOUD_HAVE_DECKLINK
                 else if (spec.type == InputSpec::Type::DeckLink)

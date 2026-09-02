@@ -152,6 +152,30 @@ if(EXISTS ${OMT_SDK_DIR}/include/libomt.h AND EXISTS ${OMT_SDK_DIR}/lib/libomt.s
     IMPORTED_NO_SONAME TRUE)
   set(_omt_libdir ${OMT_SDK_DIR}/lib)
   message(STATUS "OMT SDK found: ${OMT_SDK_DIR}")
+  # libomt-c extension: pre-built decoder pool (the stock NativeAOT libomt
+  # lacks it). Both the header and the library must have it, so a header
+  # copied over an older .so cannot produce an unresolved symbol at link.
+  include(CheckCXXSymbolExists)
+  include(CheckLibraryExists)
+  # Re-probe every configure: the SDK directory can be swapped underneath a
+  # cached result.
+  unset(KLOUD_OMT_HDR_PREWARM CACHE)
+  unset(KLOUD_OMT_LIB_PREWARM CACHE)
+  set(CMAKE_REQUIRED_INCLUDES ${OMT_SDK_DIR}/include)
+  set(CMAKE_REQUIRED_LIBRARIES ${OMT_SDK_DIR}/lib/libomt.so)
+  check_cxx_symbol_exists(omt_video_decoder_prewarm libomt.h KLOUD_OMT_HDR_PREWARM)
+  unset(CMAKE_REQUIRED_INCLUDES)
+  unset(CMAKE_REQUIRED_LIBRARIES)
+  check_library_exists(${OMT_SDK_DIR}/lib/libomt.so omt_video_decoder_prewarm
+                       "" KLOUD_OMT_LIB_PREWARM)
+  if(KLOUD_OMT_HDR_PREWARM AND KLOUD_OMT_LIB_PREWARM)
+    set(OMT_PREWARM TRUE)
+    message(STATUS "OMT decoder prewarm: available (libomt-c)")
+  else()
+    set(OMT_PREWARM FALSE)
+    message(STATUS "OMT decoder prewarm: not in this libomt (first frame of "
+                   "each connection pays the decoder build)")
+  endif()
 else()
   set(OMT_FOUND FALSE)
   message(WARNING
@@ -194,6 +218,9 @@ target_compile_options(kloud_engine PRIVATE -Wall -Wextra -Wno-missing-field-ini
 if(OMT_FOUND)
   target_sources(kloud_engine PRIVATE src/omt/OmtInput.cpp)
   target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_OMT)
+  if(OMT_PREWARM)
+    target_compile_definitions(kloud_engine PUBLIC KLOUD_HAVE_OMT_PREWARM)
+  endif()
   target_link_libraries(kloud_engine PUBLIC OMT::omt)
 endif()
 if(DECKLINK_FOUND)
