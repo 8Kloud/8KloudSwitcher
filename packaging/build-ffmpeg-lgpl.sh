@@ -20,6 +20,10 @@ set -eu
 #   nv-codec-headers  MIT       -- NVENC/NVDEC interface, no NVIDIA code;
 #                                  libavcodec dlopens the encoder from the driver
 #   libsrt            MPL-2.0
+#   dav1d             BSD-2-Clause -- software AV1 decode: operator AV1 media on
+#                                  hosts without NVDEC, and the AV1 program-output
+#                                  round-trip test. FFmpeg's native av1 decoder
+#                                  is a hwaccel-only front end with no CPU path
 #   gnutls            LGPL-2.1+  -- https:// ingest
 #   zlib              Zlib       -- REQUIRED by the PNG and EXR decoders, so the
 #                                  still-image inputs need it; --disable-autodetect
@@ -27,7 +31,7 @@ set -eu
 #   bzip2, liblzma    permissive -- compressed TIFF and Matroska tracks
 #
 # Build deps:
-#   sudo apt install git build-essential nasm pkg-config libsrt-gnutls-dev
+#   sudo apt install git build-essential nasm pkg-config libsrt-gnutls-dev libdav1d-dev
 #
 # Usage:
 #   packaging/build-ffmpeg-lgpl.sh [prefix]      # default: build/ffmpeg-lgpl
@@ -45,9 +49,10 @@ for t in git make cc pkg-config nasm; do
   command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
 done
 pkg-config --exists srt || missing="$missing libsrt-gnutls-dev"
+pkg-config --exists dav1d || missing="$missing libdav1d-dev"
 if [ -n "$missing" ]; then
   echo "ERROR: missing build dependencies:$missing" >&2
-  echo "  sudo apt install git build-essential nasm pkg-config libsrt-gnutls-dev" >&2
+  echo "  sudo apt install git build-essential nasm pkg-config libsrt-gnutls-dev libdav1d-dev" >&2
   exit 1
 fi
 
@@ -91,6 +96,7 @@ fi
 # Enabled deliberately:
 #   ffnvcodec/nvenc/nvdec  hevc_nvenc program output, NVDEC clip decode
 #   libsrt                 srt:// ingest and program output
+#   libdav1d               AV1 decode without a GPU (native av1 is hwaccel-only)
 #   filters                atempo (clip speed), aformat, abuffer/abuffersink
 #   muxers                 matroska (recording), mpegts (SRT)
 #   demuxers/decoders      the full native set: operator media and the
@@ -110,6 +116,7 @@ PKG_CONFIG_PATH="$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
   --enable-nvdec \
   --enable-cuvid \
   --enable-libsrt \
+  --enable-libdav1d \
   --enable-gnutls \
   --enable-zlib \
   --enable-bzlib \

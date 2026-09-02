@@ -327,6 +327,7 @@ build matters:
 | --- | --- | --- |
 | FFmpeg (via `packaging/build-ffmpeg-lgpl.sh`) | LGPL-2.1+ | **Do not link a distro FFmpeg** — see below |
 | libsrt | MPL-2.0 | |
+| dav1d | BSD-2-Clause | software AV1 decode inside the FFmpeg build |
 | OMT — libomt, libvmx | MIT | |
 | Vulkan loader | Apache-2.0 | |
 | NVIDIA CUDA / NVENC / NVDEC runtime | proprietary | permitted under MPL §3.3 |

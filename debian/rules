@@ -44,14 +44,18 @@ override_dh_auto_test:
 	cd obj-* && ctest --output-on-failure \
 	    -E 'gpu|interop|nvenc|^web: ' || echo "ctest: skipped/failed off-GPU builder"
 
-# Everything in the private libdir is ours to ship and resolve by RPATH: it
-# must not generate a dependency on a system package, and must not register
-# shlibs of its own.
+# The FFmpeg libraries in the private libdir are scanned like any other ELF
+# object: they link the distribution's libsrt, gnutls, dav1d, zlib, bzip2 and
+# lzma, and those must land in Depends or the package installs cleanly on a
+# fresh host and then fails to load. Their references to each other are mapped
+# to this package by debian/shlibs.local, which dpkg-gencontrol then drops as a
+# self-dependency. Without that file dpkg-shlibdeps follows each library's
+# build-tree RUNPATH, finds no owning package there, and falls through to the
+# distribution's libavcodec62 et al. -- the GPL build this package exists to
+# avoid. libomt/libvmx stay excluded: NativeAOT output with no soname version.
 override_dh_shlibdeps:
 	dh_shlibdeps -l$(CURDIR)/$(STAGE_LIBDIR) \
 	    -Xlibomt.so -Xlibvmx.so \
-	    -Xlibavcodec.so -Xlibavformat.so -Xlibavutil.so \
-	    -Xlibavfilter.so -Xlibswresample.so -Xlibswscale.so \
 	    -- --ignore-missing-info
 
 override_dh_makeshlibs:

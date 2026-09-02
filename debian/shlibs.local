@@ -1,0 +1,11 @@
+# The LGPL FFmpeg in /usr/lib/*/8kloud-switcher is this package's own. Map its
+# sonames here so dpkg-shlibdeps resolves libavcodec.so.62 and friends to
+# 8kloud-switcher (a self-dependency, dropped by dpkg-gencontrol) instead of
+# falling through to the distribution's GPL libavcodec62. Keep the versions in
+# step with the FFMPEG_TAG in packaging/build-ffmpeg-lgpl.sh.
+libavcodec 62 8kloud-switcher
+libavformat 62 8kloud-switcher
+libavutil 60 8kloud-switcher
+libavfilter 11 8kloud-switcher
+libswresample 6 8kloud-switcher
+libswscale 9 8kloud-switcher
