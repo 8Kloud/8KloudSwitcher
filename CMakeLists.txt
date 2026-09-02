@@ -181,7 +181,8 @@ else()
   message(WARNING
     "OMT SDK not found at ${OMT_SDK_DIR} - building WITHOUT OMT input, the "
     "OMT program/clean/multiview senders, and the bench tools. third_party/ is "
-    "gitignored, so a fresh clone never has it: see docs/omt.md.")
+    "gitignored, so a fresh clone never has it: run packaging/build-omt.sh "
+    "(see docs/omt.md).")
 endif()
 
 # -- DeckLink: optional, headers vendored in third_party/decklink/include

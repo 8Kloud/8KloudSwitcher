@@ -183,7 +183,7 @@ you trust a build, and always before you package one.
 On Ubuntu 26.04 (the target platform):
 
 ```sh
-sudo apt install build-essential cmake ninja-build pkgconf glslc \
+sudo apt install build-essential clang cmake ninja-build pkgconf glslc \
     libvulkan-dev catch2 avahi-daemon \
     libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev \
     libswresample-dev libswscale-dev libffmpeg-nvenc-dev
@@ -200,9 +200,13 @@ v3.8.0 from GitHub, which a package build cannot do.
 **1. Vendor the SDKs into `third_party/`** (once per machine — they are
 gitignored and never committed):
 
-- **OMT** — build `libvmx` and `libomt` from source and lay them out as
-  `third_party/omt/{include,lib}`. Full steps in [`docs/omt.md`](docs/omt.md);
-  needs clang and the .NET 8 SDK.
+- **OMT** — run `packaging/build-omt.sh`. It clones and builds
+  [libomt-c](https://github.com/8Kloud/libomt-c) (the native C implementation
+  of the libomt API, with the pre-built decoder pool) and the VMX codec
+  ([libvmx](https://github.com/8Kloud/libvmx), 8Kloud fork with the
+  `VMX_Create` fix) and lays them out as `third_party/omt/{include,lib}`; needs
+  clang++ and cmake. The stock .NET-based libomt also works in the same layout,
+  without the decoder pool: [`docs/omt.md`](docs/omt.md).
 - **DeckLink** — download the Blackmagic *Desktop Video SDK* from
   [blackmagicdesign.com/support](https://www.blackmagicdesign.com/support)
   (free, but registration-walled, so it cannot be scripted) and copy its Linux

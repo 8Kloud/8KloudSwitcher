@@ -11,31 +11,43 @@ OMT input or program output.
 `third_party/` is gitignored; build the two libraries once per machine:
 
 ```sh
+packaging/build-omt.sh          # -> third_party/omt/{include/libomt.h,lib/libomt.so,lib/libvmx.so}
+```
+
+That builds [libomt-c](https://github.com/8Kloud/libomt-c), the native C
+implementation of the libomt API (the default for this project: see
+[libomt-c](#libomt-c) below for why), and the VMX codec from the
+[8Kloud fork of libvmx](https://github.com/8Kloud/libvmx), branch
+`create-cost`, which carries the `VMX_Create` memset trim
+(openmediatransport/libvmx PR #13). Needs `git`, `cmake` and `clang++`. Set
+`LIBVMX_REPO`/`LIBVMX_REF` (and `LIBOMT_C_REPO`/`LIBOMT_C_REF`) to build from
+elsewhere, e.g. upstream libvmx once the fix has merged.
+
+Re-run cmake; it reports `OMT SDK found` and `OMT decoder prewarm: available`.
+`libomt.so` dlopens `libvmx.so` from the same directory (rpath is wired by
+CMake).
+
+### The stock .NET libomt
+
+The original NativeAOT build of libomt works in the same layout, minus the
+decoder pool (CMake then reports `OMT decoder prewarm: not in this libomt`).
+It needs the .NET 8 SDK:
+
+```sh
 cd third_party
 git clone --depth 1 https://github.com/openmediatransport/libvmx
 git clone --depth 1 https://github.com/openmediatransport/libomtnet
 git clone --depth 1 https://github.com/openmediatransport/libomt
-
-# 1. VMX codec: plain clang++ (no deps)
 (cd libvmx/build && sh buildlinuxx64.sh)
-
-# 2. .NET 8 SDK, unprivileged (skip if `dotnet` exists)
 curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0
 export DOTNET_ROOT=$HOME/.dotnet PATH=$HOME/.dotnet:$PATH
-
-# 3. libomtnet (C# implementation), then libomt (NativeAOT C ABI wrapper)
 (cd libomtnet && dotnet build libomtnet.sln -c Release)
 (cd libomt && dotnet publish libomt.sln -r linux-x64 -c Release)
-
-# 4. Lay out the SDK the build expects
 mkdir -p omt/include omt/lib
 cp libomt/libomt.h omt/include/
 cp libomt/bin/Release/net8.0/linux-x64/publish/libomt.so omt/lib/
 cp libvmx/build/libvmx.so omt/lib/
 ```
-
-Re-run cmake; it reports `OMT SDK found`. `libomt.so` dlopens `libvmx.so`
-from the same directory (rpath is wired by CMake).
 
 ## Using OMT inputs
 
@@ -89,12 +101,12 @@ in our vendored build if 8K noise content ever matters).
 
 ## libomt-c
 
-The switcher also builds against [libomt-c](https://github.com/8Kloud/libomt-c),
-the native C implementation of the same C API: lay it out as
-`third_party/omt/{include/libomt.h,lib/libomt.so,lib/libvmx.so}` exactly like
-the stock SDK (or point `-DOMT_SDK_DIR` at such a directory). No source changes
-are needed; senders and receivers interoperate with the stock library in both
-directions.
+[libomt-c](https://github.com/8Kloud/libomt-c), the native C implementation
+of the same C API, is what `packaging/build-omt.sh` installs and what the
+Debian package ships. It is a drop-in for the stock library (same header,
+same ABI, no source changes here; `-DOMT_SDK_DIR` points at any such layout),
+senders and receivers interoperate with the stock library in both directions,
+and it adds the decoder pool below.
 
 ### Decoder pre-build
 
