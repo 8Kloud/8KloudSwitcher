@@ -1,3 +1,16 @@
+8kloud-switcher (0.7.1) resolute; urgency=medium
+
+  * Make libomt-c and the patched libvmx the default OMT runtime:
+    packaging/build-omt.sh builds both from source into third_party/omt.
+  * Pre-build VMX decoders for the show format at engine start and per
+    input on patch (libomt-c's decoder pool), so a new 8K OMT connection's
+    first frame arrives on time instead of 80 ms late with two dropped
+    frames.
+  * Document the libomt-c versus stock-libomt measurements at 1080p, 4K and
+    8K in docs/omt.md.
+
+ -- Devin Block <devin@devinblock.com>  Wed, 02 Sep 2026 01:35:18 +0000
+
 8kloud-switcher (0.7.0) resolute; urgency=medium
 
   * Replace the Qt desktop GUI with a web console served by 8kloud-switcher
