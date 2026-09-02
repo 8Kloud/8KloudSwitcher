@@ -1,3 +1,21 @@
+8kloud-switcher (0.7.0) resolute; urgency=medium
+
+  * Replace the Qt desktop GUI with a web console served by 8kloud-switcher
+    itself (default port 9924): the multiview streams to the browser as JPEG
+    frames, and the WebSocket speaks the remote-control command language plus
+    JSON commands for source patching, playlists and show settings.
+  * Send the multiview wall over OMT with labels and tally rendered into the
+    frame, on by default in the console (--no-mv-omt-out to disable).
+  * Persist the show through a QSettings-compatible INI reader/writer, so an
+    existing show.ini loads unchanged. Qt 6 is no longer a dependency.
+  * Add an OUTPUTS tab for the restart-to-apply sender, SDI, SRT and bitrate
+    settings, and a draggable monitor/deck split with selectable PGM/PVW
+    layouts.
+  * Fix the final show save running after engine stop, which emptied the
+    stored input list on shutdown.
+
+ -- Devin Block <devin@devinblock.com>  Wed, 02 Sep 2026 00:08:14 +0000
+
 8kloud-switcher (0.6.6) resolute; urgency=medium
 
   * Warn loudly at configure time when the OMT or DeckLink SDK is absent,
