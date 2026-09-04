@@ -1,3 +1,19 @@
+8kloud-switcher (0.7.3) resolute; urgency=medium
+
+  * Fix AV1 SRT ingest and AV1 media clips decoding nothing since 0.7.2:
+    enabling libdav1d made it FFmpeg's default AV1 decoder, and the SRT
+    input took that default. libdav1d is software-only, ignores the CUDA
+    device the input attaches, and cannot parse the draft AV1-in-MPEG-TS
+    the SRT output sends, so the program went black while audio kept
+    flowing. The input now picks the first decoder that accepts a CUDA
+    hw_device_ctx (the native av1/hevc front ends on NVDEC) and falls
+    back to FFmpeg's default only when none exists.
+  * Add an ingest test that encodes HEVC and AV1 with NVENC, muxes each
+    into the transport stream the SRT output sends, and plays it back
+    through the SRT input on NVDEC; it fails without the fix.
+
+ -- Devin Block <devin@devinblock.com>  Fri, 04 Sep 2026 13:12:00 +0000
+
 8kloud-switcher (0.7.2) resolute; urgency=medium
 
   * Build the LGPL FFmpeg with libdav1d (BSD-2-Clause) so AV1 decodes in
