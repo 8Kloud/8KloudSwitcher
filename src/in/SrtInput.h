@@ -125,6 +125,7 @@ private:
     SyncFeed feed_{16};
     uint64_t pubSeq_ = 0;    // decode thread
     bool ptsSynth_ = false;  // decode thread; sticky per stream
+    bool awaitingFirstFrame_ = false;  // decode thread; joined mid-GOP until then
     int64_t synthBaseNs_ = 0, synthK_ = 0, synthLastArrNs_ = 0;
     std::atomic<bool> mediaPlaying_{true};
     std::atomic<bool> mediaLoop_{true};

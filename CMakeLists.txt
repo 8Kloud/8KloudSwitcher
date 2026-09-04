@@ -129,6 +129,7 @@ add_library(kloud_media STATIC
   src/media/NvencDirect.cpp
   src/media/VideoEncoder.cpp
   src/media/AacEncoder.cpp
+  src/media/AvLog.cpp
 )
 target_link_libraries(kloud_media PUBLIC kloud_gpu CudaDriver PkgConfig::FFMPEG
                       PkgConfig::FFNVCODEC ${CMAKE_DL_LIBS})
@@ -356,6 +357,7 @@ if(KLOUD_BUILD_TESTS)
     tests/nvenc_direct_test.cpp
     tests/video_encoder_test.cpp
     tests/srt_ingest_test.cpp
+    tests/avlog_test.cpp
   )
   target_link_libraries(kloud_tests PRIVATE kloud_web Catch2::Catch2WithMain)
   target_include_directories(kloud_tests PRIVATE tools)

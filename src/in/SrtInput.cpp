@@ -10,11 +10,13 @@
 #include <cmath>
 #include <cstdio>
 #include <mutex>
+#include <optional>
 
 #include "audio/AudioEngine.h"
 #include "core/Log.h"
 #include "core/MediaClock.h"
 #include "core/Stats.h"
+#include "media/AvLog.h"
 #include "media/Playlist.h"
 
 extern "C" {
@@ -39,7 +41,10 @@ SrtInput::SrtInput(gpu::VkEngine& eng, gpu::Queue& uploadQueue,
     for (auto& item : mediaPlaylist_)
         media::normalizePlaylistItem(item);
     static std::once_flag netInit;
-    std::call_once(netInit, [] { avformat_network_init(); });
+    std::call_once(netInit, [] {
+        avformat_network_init();
+        media::installAvLog();
+    });
 
     hwDev_ = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_CUDA);
     if (hwDev_) {
@@ -188,7 +193,17 @@ bool SrtInput::openStream() {
     const std::string source = currentMediaRef();
     if (avformat_open_input(&ic_, source.c_str(), nullptr, nullptr) < 0)
         return false;
-    if (avformat_find_stream_info(ic_, nullptr) < 0) return false;
+    {
+        // The probe decodes from wherever the live stream was joined until
+        // the next keyframe, and its software decoder reports every packet
+        // of that as an error. None of it is: see media/AvLog.h.
+        media::AvLogQuiet quiet;
+        if (avformat_find_stream_info(ic_, nullptr) < 0) {
+            KLOUD_LOGW("in%d(%s): no usable stream info from '%s'", index_,
+                     mediaMode_ ? "media" : "srt", source.c_str());
+            return false;
+        }
+    }
     vidIdx_ = av_find_best_stream(ic_, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (vidIdx_ < 0) return false;
 
@@ -239,6 +254,7 @@ bool SrtInput::openStream() {
             if (adec_) avcodec_flush_buffers(adec_);
         }
     }
+    awaitingFirstFrame_ = true;
     connected_.store(true, std::memory_order_relaxed);
     if (mediaMode_) {
         const std::string outLabel =
@@ -698,8 +714,15 @@ void SrtInput::run(std::stop_token st) {
             continue;
         }
         if (pkt->stream_index == vidIdx_) {
+            // A live stream is joined mid-GOP, and until the first keyframe
+            // the decoder reports every packet as an error ("Missing
+            // Sequence Header", "Error constructing the frame RPS"). The
+            // first picture out ends that; anything after it is real.
+            std::optional<media::AvLogQuiet> quiet;
+            if (awaitingFirstFrame_) quiet.emplace();
             if (avcodec_send_packet(dec_, pkt) >= 0) {
                 while (avcodec_receive_frame(dec_, frame) >= 0) {
+                    awaitingFirstFrame_ = false;
                     const auto item = currentMediaItem();
                     const int64_t position = mediaTimestampMs(
                         vidIdx_, frame->best_effort_timestamp);
