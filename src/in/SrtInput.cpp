@@ -156,6 +156,21 @@ AVPixelFormat SrtInput::pickCuda(AVCodecContext*, const AVPixelFormat* fmts) {
     return fmts[0];
 }
 
+const AVCodec* SrtInput::pickVideoDecoder(AVCodecID id) {
+    void* it = nullptr;
+    while (const AVCodec* c = av_codec_iterate(&it)) {
+        if (c->id != id || !av_codec_is_decoder(c)) continue;
+        for (int i = 0;; ++i) {
+            const AVCodecHWConfig* hw = avcodec_get_hw_config(c, i);
+            if (!hw) break;
+            if (hw->device_type == AV_HWDEVICE_TYPE_CUDA &&
+                (hw->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX))
+                return c;
+        }
+    }
+    return avcodec_find_decoder(id);
+}
+
 bool SrtInput::openStream() {
     const auto mediaItem = currentMediaItem();
     ptsSynth_ = false;  // re-judge the new stream's timestamps
@@ -178,7 +193,7 @@ bool SrtInput::openStream() {
     if (vidIdx_ < 0) return false;
 
     const AVCodecParameters* par = ic_->streams[vidIdx_]->codecpar;
-    const AVCodec* codec = avcodec_find_decoder(par->codec_id);
+    const AVCodec* codec = pickVideoDecoder(par->codec_id);
     if (!codec) return false;
     dec_ = avcodec_alloc_context3(codec);
     if (avcodec_parameters_to_context(dec_, par) < 0) return false;

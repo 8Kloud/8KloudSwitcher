@@ -355,6 +355,7 @@ if(KLOUD_BUILD_TESTS)
     tests/interop_test.cpp
     tests/nvenc_direct_test.cpp
     tests/video_encoder_test.cpp
+    tests/srt_ingest_test.cpp
   )
   target_link_libraries(kloud_tests PRIVATE kloud_web Catch2::Catch2WithMain)
   target_include_directories(kloud_tests PRIVATE tools)

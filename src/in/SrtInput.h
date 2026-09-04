@@ -65,6 +65,14 @@ public:
 
     SyncFeed* syncFeed() override { return syncFrames_ >= 0 ? &feed_ : nullptr; }
 
+    // The decoder openStream() uses for a stream of this codec: the first
+    // registered one that accepts a CUDA hw_device_ctx (NVDEC through the
+    // native hwaccel front end), else FFmpeg's default. avcodec_find_decoder()
+    // alone is wrong here: the LGPL FFmpeg registers libdav1d ahead of the
+    // native av1 decoder, and libdav1d is software-only, ignores the device,
+    // and cannot even parse the draft AV1-in-MPEG-TS the SRT output sends.
+    static const AVCodec* pickVideoDecoder(AVCodecID id);
+
 private:
     void run(std::stop_token st);
     bool openStream();
