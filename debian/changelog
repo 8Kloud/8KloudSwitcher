@@ -1,3 +1,26 @@
+8kloud-switcher (0.7.4) resolute; urgency=medium
+
+  * Quiet the libav errors every SRT connect logged while waiting for the
+    first keyframe ("PPS id out of range", "Skipping invalid undecodable
+    NALU", "Missing Sequence Header", for AV1 "No sequence header
+    available"). A live stream is joined mid-GOP, so every packet until the
+    keyframe is an error to a decoder and none of it is a fault. Both the
+    stream probe and the decode loop up to the first picture now run under
+    a per-thread quiet scope; decoder messages after that still show, and
+    a failed probe logs its own warning.
+  * Build the LGPL FFmpeg libraries with an $ORIGIN runpath instead of
+    --enable-rpath, which wrote the build tree's absolute path into every
+    library and into the pkg-config files, so the packaged binaries carried
+    it too and preferred the build tree's copies on the machine that built
+    them.
+  * Link each executable with its final RPATH (KLOUD_PRIVATE_RPATH, set by
+    debian/rules) instead of rewriting it at install time. The rewrite left
+    dev binaries with an empty RPATH element, which ld.so reads as the
+    current working directory. Package binaries now carry the private
+    libdir alone.
+
+ -- Devin Block <devin@devinblock.com>  Fri, 04 Sep 2026 14:07:33 +0000
+
 8kloud-switcher (0.7.3) resolute; urgency=medium
 
   * Fix AV1 SRT ingest and AV1 media clips decoding nothing since 0.7.2:
