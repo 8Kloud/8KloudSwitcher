@@ -123,7 +123,21 @@ PKG_CONFIG_PATH="$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
   --enable-lzma \
   --enable-protocol=file,pipe,srt,tcp,udp,rtp,http,https,crypto,data,concat \
   --enable-pic \
-  --enable-rpath
+  --extra-ldsoflags='-Wl,-rpath,\\\$\$\$\$ORIGIN'
+
+# Not --enable-rpath: that writes this build tree's absolute path into every
+# library and into the pkg-config Libs line, so each binary linked through
+# pkg-config inherits it in DT_RUNPATH -- an installed package then prefers
+# the build tree's copies on the machine that built it, and the path is
+# meaningless anywhere else. The libraries only need to find each other, and
+# $ORIGIN does that wherever the six of them are installed together (the
+# build tree here, the package's private libdir). The project's binaries get
+# their own RPATH from CMake (BUILD_RPATH / INSTALL_RPATH). The escaping is
+# three deep: configure appends the value through an eval in double quotes
+# (\\ -> \, \$ -> $), ffbuild/library.mak expands LDSOFLAGS twice because its
+# link rules are a define/eval template ($$$$ -> $), and the recipe shell must
+# then see \$ORIGIN so it does not expand it. Check the result with readelf -d
+# on any of the libraries: the runpath must read exactly $ORIGIN.
 
 make -j"$(nproc)"
 make install
