@@ -35,6 +35,7 @@ override_dh_auto_configure:
 	    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
 	    -DCMAKE_INSTALL_DOCDIR=share/doc/8kloud-switcher \
 	    -DKLOUD_FFMPEG_PREFIX=$(FFMPEG_PREFIX) \
+	    -DKLOUD_PRIVATE_RPATH=ON \
 	    -DKLOUD_BUILD_TESTS=ON
 
 # The GPU tests need a real NVIDIA device and a Vulkan queue, which a build

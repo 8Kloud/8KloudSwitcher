@@ -256,6 +256,26 @@ if(OMT_FOUND OR KLOUD_FFMPEG_LIBDIR)
   set(_kloud_install_rpath "${KLOUD_PRIVATE_LIBDIR}")
 endif()
 
+# Each executable is linked with its final RPATH (BUILD_WITH_INSTALL_RPATH)
+# instead of having it rewritten at install time. The rewrite makes CMake pad
+# every build-tree RPATH with a trailing separator so the install-time string
+# fits, and an empty RPATH element tells ld.so to search the current working
+# directory -- a dev binary run from a directory holding a stray
+# libavcodec.so.62 would load it. So a dev build carries the build-tree paths
+# and is not meant to be installed; a package build (debian/rules) sets
+# KLOUD_PRIVATE_RPATH and its executables run only from the installed
+# location, or with LD_LIBRARY_PATH pointing at the staged private libdir.
+option(KLOUD_PRIVATE_RPATH
+  "Link the executables with the installed private libdir as their only RPATH (package builds)"
+  OFF)
+if(KLOUD_PRIVATE_RPATH)
+  set(_kloud_exe_rpath "${_kloud_install_rpath}")
+  set(_kloud_tool_rpath "${_kloud_install_rpath}")
+else()
+  set(_kloud_exe_rpath "${_kloud_rpath}")
+  set(_kloud_tool_rpath "${_omt_libdir}")
+endif()
+
 # The bench rig talks OMT end to end, so it only exists with the SDK.
 if(OMT_FOUND)
   foreach(tool kloud-testgen kloud-latmeter)
@@ -265,8 +285,7 @@ if(OMT_FOUND)
     target_compile_options(${tool} PRIVATE -Wall -Wextra)
     # Locate libomt.so next to the SDK without requiring ldconfig.
     set_target_properties(${tool} PROPERTIES
-      BUILD_RPATH "${_omt_libdir}"
-      INSTALL_RPATH "${_kloud_install_rpath}")
+      INSTALL_RPATH "${_kloud_tool_rpath}" BUILD_WITH_INSTALL_RPATH ON)
   endforeach()
 else()
   message(WARNING "OMT SDK not found - kloud-testgen/kloud-latmeter will not "
@@ -277,7 +296,7 @@ add_executable(kloud-headless tools/kloud-headless/main.cpp)
 target_link_libraries(kloud-headless PRIVATE kloud_engine)
 target_include_directories(kloud-headless PRIVATE tools)
 set_target_properties(kloud-headless PROPERTIES
-  BUILD_RPATH "${_kloud_rpath}" INSTALL_RPATH "${_kloud_install_rpath}")
+  INSTALL_RPATH "${_kloud_exe_rpath}" BUILD_WITH_INSTALL_RPATH ON)
 
 # -- web GUI: the console page is embedded into the binary so the installed
 # program is self-contained (no web root to locate at runtime).
@@ -314,8 +333,7 @@ add_executable(8kloud-switcher src/app/main.cpp)
 target_link_libraries(8kloud-switcher PRIVATE kloud_web)
 target_compile_options(8kloud-switcher PRIVATE -Wall -Wextra)
 set_target_properties(8kloud-switcher PROPERTIES
-  BUILD_RPATH "${_kloud_rpath}"
-  INSTALL_RPATH "${_kloud_install_rpath}")
+  INSTALL_RPATH "${_kloud_exe_rpath}" BUILD_WITH_INSTALL_RPATH ON)
 
 option(KLOUD_BUILD_TESTS "Build unit tests" ON)
 if(KLOUD_BUILD_TESTS)
